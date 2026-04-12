@@ -9,6 +9,7 @@ RAG 智能文档问答系统 - Web 全栈前端
 import streamlit as st
 import time
 import os
+import sys
 import tempfile
 from datetime import datetime
 import requests
@@ -17,9 +18,23 @@ from typing import List, Dict, Any, Optional
 # ========================================================================
 # 🔌 A 同学接口导入
 # ========================================================================
+import sys
+import os
+
+# 搜索 core 模块的目录
+_app_dir = os.path.dirname(os.path.abspath(__file__))
+_search_paths = [
+    _app_dir,
+    os.path.dirname(_app_dir),  # 父目录
+    os.path.dirname(os.path.dirname(_app_dir)),  # 祖父目录
+]
+for _p in _search_paths:
+    if _p not in sys.path:
+        sys.path.insert(0, _p)
+
 try:
     from core.interfaces import IRAGBackend, LLMConfig, EmbedConfig, Citation
-    from rag_backend import LangChainRAGBackend
+    from core.rag_backend import LangChainRAGBackend
     INTERFACE_AVAILABLE = True
 except ImportError as e:
     INTERFACE_AVAILABLE = False
@@ -352,10 +367,7 @@ def load_custom_css():
         background-color: #212121 !important;
     }
     
-    /* 隐藏默认 header */
-    header[data-testid="stHeader"] {
-        display: none;
-    }
+
     
     /* 主内容区 - 紧凑布局 */
     .main .block-container {
@@ -364,6 +376,12 @@ def load_custom_css():
         padding-right: 1rem;
         max-width: 900px;
         margin: 0 auto;
+    }
+    
+    /* 增大边栏切换按钮 */
+    [data-testid="stSidebarCollapsedControl"] {
+        padding: 12px 16px !important;
+        font-size: 16px !important;
     }
     
     /* 减少元素间距 */
@@ -401,23 +419,19 @@ def load_custom_css():
         border-radius: 4px !important;
         font-size: 13px !important;
         padding: 4px 10px !important;
+        pointer-events: auto !important;
     }
     
     .stButton > button:hover {
         background-color: #0d8a6c !important;
     }
     
-    /* 侧边栏 */
-    [data-testid="stSidebar"] {
-        background-color: #202123 !important;
-        border-right: 1px solid #343541 !important;
+    /* 确保按钮可点击 */
+    .stButton {
+        pointer-events: auto !important;
     }
     
-    [data-testid="stSidebar"] h3 {
-        color: #ECECEC !important;
-        font-size: 14px !important;
-        font-weight: 600 !important;
-    }
+    /* 侧边栏样式 - 不添加任何可能影响开关的样式 */
     
     /* 文件上传 */
     .stFileUploader > div {
@@ -672,6 +686,9 @@ def init_session_state():
     # 文档上传历史
     if "upload_history" not in st.session_state:
         st.session_state.upload_history = []
+    
+    # 侧边栏状态 - 强制展开
+    st.session_state.sidebar_collapsed = False
 
 
 def reset_chat_history():
@@ -692,6 +709,15 @@ def handle_file_upload(uploaded_file: Any) -> bool:
     """处理文件上传"""
     if uploaded_file is None:
         return False
+    
+    # 检查 API Key 是否已配置
+    if not st.session_state.llm_api_key:
+        st.session_state.error_msg = "请先在侧边栏填写并保存 LLM API Key"
+        st.error("⚠️ 请先配置 API Key：填写 LLM API Key 后点击「保存配置」")
+        return False
+    
+    # 使用最新配置重新初始化 RAG 引擎
+    st.session_state.rag_engine = init_rag_engine()
     
     file_name: str = uploaded_file.name
     
@@ -801,13 +827,11 @@ def render_sidebar():
         with col2:
             clear_btn = st.button("清空", use_container_width=True)
         
-        # 处理上传
         if upload_btn and uploaded_file:
             with st.spinner("处理中..."):
                 handle_file_upload(uploaded_file)
                 st.rerun()
         
-        # 清空
         if clear_btn:
             st.session_state.current_doc = None
             st.session_state.doc_ready = False
@@ -820,8 +844,6 @@ def render_sidebar():
         # API 配置面板
         with st.expander("服务配置", expanded=not st.session_state.api_configured):
             st.markdown("**LLM 配置**")
-            
-            # 模型选择器 - 使用 radio 按钮避免浮层问题
             llm_preset_options = list(LLM_PRESETS.keys())
             llm_preset_default = 0
             if st.session_state.llm_model and st.session_state.llm_base_url:
@@ -830,59 +852,23 @@ def render_sidebar():
                         llm_preset_default = i
                         break
             
-            selected_llm_preset = st.radio(
-                "选择模型",
-                options=llm_preset_options,
-                index=llm_preset_default,
-                horizontal=True,
-                label_visibility="collapsed"
-            )
-            
-            # 获取预设配置
+            selected_llm_preset = st.radio("选择模型", options=llm_preset_options, index=llm_preset_default, horizontal=True, label_visibility="collapsed")
             llm_preset = LLM_PRESETS[selected_llm_preset]
             llm_base_url = llm_preset["base_url"]
             llm_model = llm_preset["model"]
             
-            # 只有自定义模式才显示手动输入
             if selected_llm_preset == "自定义":
-                llm_base_url = st.text_input(
-                    "Base URL",
-                    value=st.session_state.llm_base_url,
-                    placeholder="https://api.openai.com/v1"
-                )
-                llm_model = st.text_input(
-                    "模型名称",
-                    value=st.session_state.llm_model,
-                    placeholder="gpt-4o"
-                )
+                llm_base_url = st.text_input("Base URL", value=st.session_state.llm_base_url, placeholder="https://api.openai.com/v1")
+                llm_model = st.text_input("模型名称", value=st.session_state.llm_model, placeholder="gpt-4o")
             else:
                 st.caption(f"Endpoint: {llm_base_url} | Model: {llm_model}")
             
-            # API Key 必须手动输入
-            llm_api_key = st.text_input(
-                "API Key",
-                value=st.session_state.llm_api_key,
-                type="password",
-                placeholder="输入 API 密钥"
-            )
+            llm_api_key = st.text_input("API Key", value=st.session_state.llm_api_key, type="password", placeholder="输入 API 密钥")
             
             st.markdown("**Embedding 配置** (可选，留空则复用 LLM 配置)")
-            embed_base_url = st.text_input(
-                "Embedding Base URL",
-                value=st.session_state.embed_base_url,
-                placeholder="留空则复用 LLM Base URL"
-            )
-            embed_api_key = st.text_input(
-                "Embedding API Key",
-                value=st.session_state.embed_api_key,
-                type="password",
-                placeholder="留空则复用 LLM API Key"
-            )
-            embed_model = st.text_input(
-                "Embedding 模型",
-                value=st.session_state.embed_model,
-                placeholder="text-embedding-v3"
-            )
+            embed_base_url = st.text_input("Embedding Base URL", value=st.session_state.embed_base_url, placeholder="留空则复用 LLM Base URL")
+            embed_api_key = st.text_input("Embedding API Key", value=st.session_state.embed_api_key, type="password", placeholder="留空则复用 LLM API Key")
+            embed_model = st.text_input("Embedding 模型", value=st.session_state.embed_model, placeholder="text-embedding-v3")
             
             col_save, col_test = st.columns(2)
             with col_save:
@@ -890,7 +876,6 @@ def render_sidebar():
             with col_test:
                 test_btn = st.button("测试连接", use_container_width=True)
             
-            # 保存配置
             if save_btn:
                 if not llm_api_key:
                     st.error("LLM API Key 不能为空")
@@ -901,12 +886,9 @@ def render_sidebar():
                     st.session_state.embed_base_url = embed_base_url
                     st.session_state.embed_api_key = embed_api_key
                     st.session_state.embed_model = embed_model
-                    
-                    # 重新初始化引擎
                     st.session_state.rag_engine = init_rag_engine()
                     st.rerun()
             
-            # 测试连接
             if test_btn:
                 st.session_state.llm_base_url = llm_base_url
                 st.session_state.llm_api_key = llm_api_key
@@ -914,21 +896,17 @@ def render_sidebar():
                 st.session_state.embed_base_url = embed_base_url
                 st.session_state.embed_api_key = embed_api_key
                 st.session_state.embed_model = embed_model
-                
                 with st.spinner("测试中..."):
                     llm_ok, embed_ok = test_api_connection()
-                
                 if llm_ok:
                     st.success("LLM 连接成功")
                 else:
                     st.error("LLM 连接失败")
-                
                 if embed_ok:
                     st.success("Embedding 连接成功")
                 else:
                     st.error("Embedding 连接失败")
             
-            # 显示连接状态（仅在测试过后）
             if st.session_state.has_tested:
                 st.markdown("---")
                 status_col1, status_col2 = st.columns(2)
@@ -941,7 +919,6 @@ def render_sidebar():
         
         st.divider()
         
-        # 状态
         if st.session_state.doc_ready:
             st.text(f"已加载: {st.session_state.current_doc}")
             col3, col4 = st.columns(2)
@@ -954,12 +931,10 @@ def render_sidebar():
         
         st.divider()
         
-        # 新对话
         if st.button("新对话", use_container_width=True):
             reset_chat_history()
             st.rerun()
         
-        # 历史
         if st.session_state.upload_history:
             with st.expander("上传历史"):
                 for i, doc in enumerate(reversed(st.session_state.upload_history[-5:])):
