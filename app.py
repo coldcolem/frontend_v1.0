@@ -444,6 +444,36 @@ def load_custom_css():
 
 
 # ========================================================================
+# 💾 持久化存储
+# ========================================================================
+import json
+
+def get_upload_history_path():
+    """获取上传历史文件路径"""
+    return os.path.join(os.path.dirname(__file__), "upload_history.json")
+
+def load_upload_history():
+    """从文件加载上传历史"""
+    path = get_upload_history_path()
+    if os.path.exists(path):
+        try:
+            with open(path, 'r', encoding='utf-8') as f:
+                return json.load(f)
+        except Exception:
+            return []
+    return []
+
+def save_upload_history(history):
+    """保存上传历史到文件"""
+    path = get_upload_history_path()
+    try:
+        with open(path, 'w', encoding='utf-8') as f:
+            json.dump(history, f, ensure_ascii=False, indent=2)
+    except Exception as e:
+        st.error(f"保存历史失败: {e}")
+
+
+# ========================================================================
 # 🔧 状态管理初始化
 # ========================================================================
 def init_rag_engine() -> Any:
@@ -577,6 +607,11 @@ def init_session_state():
     # RAG 引擎实例
     if "rag_engine" not in st.session_state:
         st.session_state.rag_engine = init_rag_engine()
+        st.session_state.config_version = 0  # 配置版本号
+    
+    # 配置版本号（用于检测配置变化）
+    if "config_version" not in st.session_state:
+        st.session_state.config_version = 0
     
     # 当前文档
     if "current_doc" not in st.session_state:
@@ -598,9 +633,13 @@ def init_session_state():
     if "qa_count" not in st.session_state:
         st.session_state.qa_count = 0
     
-    # 文档上传历史
+    # 文档上传历史（从文件持久化加载）
     if "upload_history" not in st.session_state:
-        st.session_state.upload_history = []
+        st.session_state.upload_history = load_upload_history()
+    
+    # 知识库（已加载的文档列表）
+    if "knowledge_base" not in st.session_state:
+        st.session_state.knowledge_base = []
     
     # 侧边栏状态 - 强制展开
     st.session_state.sidebar_collapsed = False
@@ -634,14 +673,25 @@ def handle_file_upload(uploaded_file: Any) -> bool:
         st.error("⚠️ 请先选择对话模型：展开「服务配置」→ 选择模型 → 保存配置")
         return False
     
-    # 使用最新配置重新初始化 RAG 引擎
-    st.session_state.rag_engine = init_rag_engine()
+    # 只在首次上传或引擎为空时初始化，或配置变化时重新初始化
+    current_version = st.session_state.config_version
+    if (st.session_state.rag_engine is None or 
+        getattr(st.session_state, '_engine_version', -1) != current_version):
+        st.session_state.rag_engine = init_rag_engine()
+        st.session_state._engine_version = current_version
+        if st.session_state.rag_engine is None:
+            st.error("⚠️ RAG 引擎初始化失败")
+            return False
+        # 如果是配置变化导致的重新初始化，清空知识库列表
+        if current_version > 0 and not st.session_state.knowledge_base:
+            pass  # 正常情况
     
     file_name: str = uploaded_file.name
     
-    # 检测是否是新文件
-    if file_name == st.session_state.current_doc and st.session_state.doc_ready:
-        st.toast("📄 该文档已加载，无需重复上传", icon="ℹ️")
+    # 检测是否已存在该文档
+    existing_names = [doc['name'] for doc in st.session_state.knowledge_base]
+    if file_name in existing_names:
+        st.toast(f"📄 {file_name} 已加载", icon="ℹ️")
         return True
     
     st.session_state.processing = True
@@ -655,27 +705,21 @@ def handle_file_upload(uploaded_file: Any) -> bool:
         )
         
         if success:
-            st.session_state.current_doc = file_name
+            # 添加到知识库列表
+            st.session_state.knowledge_base.append({
+                'name': file_name,
+                'time': datetime.now().strftime("%H:%M:%S"),
+                'size': len(uploaded_file.getvalue())
+            })
             st.session_state.doc_ready = True
             st.session_state.upload_history.append({
                 'name': file_name,
                 'time': datetime.now().strftime("%H:%M:%S"),
                 'size': len(uploaded_file.getvalue())
             })
-            reset_chat_history()
-            st.session_state.messages.append({
-                "role": "assistant",
-                "content": f"""📄 **《{file_name}》已成功加载！**
-
-✅ 文档已解析并入库至向量知识库。
-
-💡 **使用建议**：
-• 请在下方输入您的问题
-• 可以询问文档内容、概念解释、操作步骤等
-• 上传新文档将自动切换知识库""",
-                "timestamp": datetime.now().isoformat()
-            })
-            st.toast("🎉 文档处理完成，可以开始对话了！", icon="✅")
+            save_upload_history(st.session_state.upload_history)
+            
+            st.toast(f"✅ {file_name} 已添加至知识库", icon="🎉")
             return True
         else:
             st.session_state.error_msg = "后端返回处理失败，请检查文件是否损坏"
@@ -683,7 +727,6 @@ def handle_file_upload(uploaded_file: Any) -> bool:
             
     except Exception as e:
         st.session_state.error_msg = f"处理异常：{str(e)}"
-        st.session_state.doc_ready = False
         return False
     finally:
         st.session_state.processing = False
@@ -732,20 +775,25 @@ def render_sidebar():
     with st.sidebar:
         st.markdown("### 知识库")
         
-        # 文件上传
-        uploaded_file = st.file_uploader(
-            "选择文档",
-            type=["pdf", "txt", "md", "docx", "doc"]
+        # 文件上传（支持多文件）
+        uploaded_files = st.file_uploader(
+            "选择文档（支持多选）",
+            type=["pdf", "txt", "md", "docx", "doc"],
+            accept_multiple_files=True
         )
+        
+        # 显示已加载文档数量
+        if st.session_state.knowledge_base:
+            st.success(f"已加载 {len(st.session_state.knowledge_base)} 个文档")
         
         # 按钮行
         col1, col2 = st.columns(2)
         with col1:
-            upload_btn = st.button("上传", use_container_width=True)
+            upload_btn = st.button("批量上传", use_container_width=True)
         with col2:
             clear_btn = st.button("清空", use_container_width=True)
         
-        if upload_btn and uploaded_file:
+        if upload_btn and uploaded_files:
             # 检查配置
             if not st.session_state.llm_api_key:
                 st.error("⚠️ 请先配置服务：展开「服务配置」→ 选择模型 → 填写 API Key → 保存配置")
@@ -753,13 +801,18 @@ def render_sidebar():
                 st.error("⚠️ 请先选择对话模型：展开「服务配置」→ 选择模型 → 保存配置")
             else:
                 with st.spinner("处理中..."):
-                    handle_file_upload(uploaded_file)
+                    for uploaded_file in uploaded_files:
+                        handle_file_upload(uploaded_file)
                     st.rerun()
         
         if clear_btn:
             st.session_state.current_doc = None
             st.session_state.doc_ready = False
+            st.session_state.knowledge_base = []
             st.session_state.upload_history = []
+            st.session_state.rag_engine = None  # 重置引擎以清空向量库
+            st.session_state._engine_version = -1  # 重置引擎版本
+            save_upload_history([])
             reset_chat_history()
             st.rerun()
         
@@ -811,6 +864,9 @@ def render_sidebar():
                     st.session_state.embed_api_key = embed_api_key
                     st.session_state.embed_model = embed_model
                     st.session_state.rag_engine = init_rag_engine()
+                    st.session_state.config_version += 1  # 配置已更新
+                    st.session_state.knowledge_base = []  # 清空知识库（需重新入库）
+                    save_upload_history([])
                     st.rerun()
             
             if test_btn:
@@ -843,13 +899,16 @@ def render_sidebar():
         
         st.divider()
         
-        if st.session_state.doc_ready:
-            st.text(f"已加载: {st.session_state.current_doc}")
+        if st.session_state.knowledge_base:
+            doc_names = ", ".join([doc['name'] for doc in st.session_state.knowledge_base[:3]])
+            if len(st.session_state.knowledge_base) > 3:
+                doc_names += f" 等{len(st.session_state.knowledge_base)}个"
+            st.text(f"已加载: {doc_names}")
             col3, col4 = st.columns(2)
             with col3:
                 st.metric("问答", st.session_state.qa_count)
             with col4:
-                st.metric("文档", len(st.session_state.upload_history))
+                st.metric("文档", len(st.session_state.knowledge_base))
         else:
             st.text("等待上传文档")
         
@@ -859,10 +918,24 @@ def render_sidebar():
             reset_chat_history()
             st.rerun()
         
+        # 显示已加载的知识库文档
+        if st.session_state.knowledge_base:
+            with st.expander(f"📚 知识库 ({len(st.session_state.knowledge_base)})"):
+                for i, doc in enumerate(st.session_state.knowledge_base):
+                    st.caption(f"• {doc['name']}")
+        
         if st.session_state.upload_history:
-            with st.expander("上传历史"):
+            with st.expander(f"上传历史 ({len(st.session_state.upload_history)})"):
                 for i, doc in enumerate(reversed(st.session_state.upload_history[-5:])):
-                    st.caption(f"{i+1}. {doc['name']}")
+                    size = doc.get('size', 0)
+                    time = doc.get('time', '')
+                    if size > 1024 * 1024:
+                        size_str = f"{size / (1024*1024):.1f} MB"
+                    elif size > 1024:
+                        size_str = f"{size / 1024:.1f} KB"
+                    else:
+                        size_str = f"{size} B"
+                    st.caption(f"{i+1}. {doc['name']} ({size_str}) {time}")
 
 
 # ========================================================================
@@ -875,6 +948,11 @@ def render_chat_interface():
     if not st.session_state.messages:
         st.markdown('<p class="welcome-title">RAG 智能问答</p>', unsafe_allow_html=True)
         st.markdown('<p class="welcome-subtitle">基于检索增强生成技术的知识交互系统</p>', unsafe_allow_html=True)
+        
+        # 如果已有加载的文档，显示知识库状态
+        if st.session_state.knowledge_base:
+            doc_list = "、".join([doc['name'] for doc in st.session_state.knowledge_base])
+            st.info(f"📚 知识库已加载 {len(st.session_state.knowledge_base)} 个文档：{doc_list}")
         
         st.markdown("""
         <div class="welcome-box">
@@ -903,17 +981,21 @@ def render_chat_interface():
             with col1:
                 st.markdown('<div style="width:36px;height:36px;background:#10A37F;border-radius:50%;display:flex;align-items:center;justify-content:center;color:white;font-size:14px;font-weight:bold;">U</div>', unsafe_allow_html=True)
             with col2:
-                st.markdown(f'<div style="background-color:#10A37F;color:white;padding:12px 16px;border-radius:0 12px 12px 12px;text-align:left;max-width:100%;">{msg["content"]}</div>', unsafe_allow_html=True)
+                st.markdown(f'<div style="background-color:#10A37F;color:white;padding:12px 16px;border-radius:0 12px 12px 12px;text-align:left;max-width:100%;margin-bottom:8px;">{msg["content"]}</div>', unsafe_allow_html=True)
         else:
             # AI 消息：头像在左，气泡在右
             col1, col2 = st.columns([0.03, 0.9])
             with col1:
                 st.markdown('<div style="width:36px;height:36px;background:#343541;border-radius:50%;display:flex;align-items:center;justify-content:center;color:white;font-size:14px;font-weight:bold;">A</div>', unsafe_allow_html=True)
             with col2:
-                st.markdown(f'<div style="background-color:#343541;color:#ECECEC;padding:12px 16px;border-radius:0 12px 12px 12px;text-align:left;max-width:100%;">{msg["content"]}</div>', unsafe_allow_html=True)
+                st.markdown(f'<div style="background-color:#343541;color:#ECECEC;padding:12px 16px;border-radius:0 12px 12px 12px;text-align:left;max-width:100%;margin-bottom:8px;">{msg["content"]}</div>', unsafe_allow_html=True)
     
     # 问答输入框
-    placeholder = "输入您的问题..." if st.session_state.doc_ready else "请先上传文档后提问"
+    if st.session_state.knowledge_base:
+        doc_count = len(st.session_state.knowledge_base)
+        placeholder = f"向知识库（{doc_count}个文档）提问..."
+    else:
+        placeholder = "请先上传文档后提问"
     disabled = not st.session_state.doc_ready or st.session_state.processing
     
     if prompt := st.chat_input(placeholder, disabled=disabled):
@@ -928,7 +1010,7 @@ def render_chat_interface():
         with col1:
             st.markdown('<div style="width:36px;height:36px;background:#10A37F;border-radius:50%;display:flex;align-items:center;justify-content:center;color:white;font-size:14px;font-weight:bold;">U</div>', unsafe_allow_html=True)
         with col2:
-            st.markdown(f'<div style="background-color:#10A37F;color:white;padding:12px 16px;border-radius:0 12px 12px 12px;text-align:left;max-width:100%;">{prompt}</div>', unsafe_allow_html=True)
+            st.markdown(f'<div style="background-color:#10A37F;color:white;padding:12px 16px;border-radius:0 12px 12px 12px;text-align:left;max-width:100%;margin-bottom:8px;">{prompt}</div>', unsafe_allow_html=True)
         
         # 生成 AI 回复 - 左侧
         col1, col2 = st.columns([0.03, 0.9])
@@ -937,7 +1019,7 @@ def render_chat_interface():
         with col2:
             with st.spinner("思考中..."):
                 answer = handle_question(prompt)
-                st.markdown(f'<div style="background-color:#343541;color:#ECECEC;padding:12px 16px;border-radius:0 12px 12px 12px;text-align:left;max-width:100%;">{answer}</div>', unsafe_allow_html=True)
+                st.markdown(f'<div style="background-color:#343541;color:#ECECEC;padding:12px 16px;border-radius:0 12px 12px 12px;text-align:left;max-width:100%;margin-bottom:8px;">{answer}</div>', unsafe_allow_html=True)
                 
                 st.session_state.messages.append({
                     "role": "assistant",
