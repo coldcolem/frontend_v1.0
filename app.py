@@ -657,6 +657,10 @@ def init_session_state():
     if "knowledge_base" not in st.session_state:
         st.session_state.knowledge_base = []
     
+    # 禁用的文档列表（文档名 -> True）
+    if "disabled_docs" not in st.session_state:
+        st.session_state.disabled_docs = {}
+    
     # 侧边栏状态 - 强制展开
     st.session_state.sidebar_collapsed = False
 
@@ -710,6 +714,50 @@ def update_conversation_title(conv_id, title):
     """更新对话标题"""
     if conv_id in st.session_state.conversations:
         st.session_state.conversations[conv_id]["title"] = title
+
+
+def disable_document(doc_name):
+    """禁用文档（暂时，不参与检索但保留）"""
+    st.session_state.disabled_docs[doc_name] = True
+
+
+def enable_document(doc_name):
+    """启用文档（恢复）"""
+    if doc_name in st.session_state.disabled_docs:
+        del st.session_state.disabled_docs[doc_name]
+
+
+def delete_document(doc_name):
+    """删除文档（永久，从知识库和向量库中移除）"""
+    # 从知识库列表移除
+    st.session_state.knowledge_base = [
+        doc for doc in st.session_state.knowledge_base 
+        if doc.get('name') != doc_name
+    ]
+    # 从禁用列表移除
+    if doc_name in st.session_state.disabled_docs:
+        del st.session_state.disabled_docs[doc_name]
+    # 从上传历史移除
+    st.session_state.upload_history = [
+        doc for doc in st.session_state.upload_history 
+        if doc.get('name') != doc_name
+    ]
+    # 保存上传历史
+    save_upload_history(st.session_state.upload_history)
+    # 从向量库删除
+    try:
+        if st.session_state.rag_engine:
+            st.session_state.rag_engine.delete_documents([doc_name])
+    except Exception:
+        pass
+
+
+def get_active_documents():
+    """获取活跃文档列表（排除禁用的）"""
+    return [
+        doc for doc in st.session_state.knowledge_base 
+        if doc.get('name') not in st.session_state.disabled_docs
+    ]
 
 
 def get_current_messages():
@@ -1019,18 +1067,44 @@ def render_sidebar():
         # 已加载文档列表（下拉栏形式）
         if st.session_state.knowledge_base:
             doc_count = len(st.session_state.knowledge_base)
-            with st.expander(f"📚 已加载文档 ({doc_count})"):
+            disabled_count = len(st.session_state.disabled_docs)
+            status_text = f"📚 已加载文档 ({doc_count})"
+            if disabled_count > 0:
+                status_text += f" · {disabled_count} 已禁用"
+            with st.expander(status_text):
                 for i, doc in enumerate(st.session_state.knowledge_base):
                     name = doc.get('name', '未知')
                     size = doc.get('size', 0)
                     time = doc.get('time', '')
+                    is_disabled = name in st.session_state.disabled_docs
+                    
                     if size > 1024 * 1024:
                         size_str = f"{size / (1024*1024):.1f} MB"
                     elif size > 1024:
                         size_str = f"{size / 1024:.1f} KB"
                     else:
                         size_str = f"{size} B"
-                    st.caption(f"• {name} ({size_str}) {time}")
+                    
+                    # 文档信息行
+                    status_icon = "⏸️" if is_disabled else "✅"
+                    st.caption(f"{status_icon} {name} ({size_str}) {time}")
+                    
+                    # 操作按钮行
+                    col1, col2, col3 = st.columns([1, 1, 1])
+                    with col1:
+                        if is_disabled:
+                            if st.button("启用", key=f"enable_{name}", use_container_width=True):
+                                enable_document(name)
+                                st.rerun()
+                        else:
+                            if st.button("禁用", key=f"disable_{name}", use_container_width=True):
+                                disable_document(name)
+                                st.rerun()
+                    with col2:
+                        if st.button("删除", key=f"delete_{name}", use_container_width=True):
+                            delete_document(name)
+                            st.rerun()
+                    st.divider()
 
 
 # ========================================================================
@@ -1045,10 +1119,13 @@ def render_chat_interface():
         st.markdown('<p class="welcome-title">RAG 智能问答</p>', unsafe_allow_html=True)
         st.markdown('<p class="welcome-subtitle">基于检索增强生成技术的知识交互系统</p>', unsafe_allow_html=True)
         
-        # 如果已有加载的文档，显示知识库状态
-        if st.session_state.knowledge_base:
-            doc_list = "、".join([doc['name'] for doc in st.session_state.knowledge_base])
-            st.info(f"📚 知识库已加载 {len(st.session_state.knowledge_base)} 个文档：{doc_list}")
+        # 如果已有加载的文档，显示知识库状态（只显示活跃的）
+        active_docs = get_active_documents()
+        if active_docs:
+            doc_list = "、".join([doc['name'] for doc in active_docs])
+            st.info(f"📚 知识库已加载 {len(active_docs)} 个文档：{doc_list}")
+        elif st.session_state.knowledge_base:
+            st.warning(f"⚠️ 当前所有 {len(st.session_state.knowledge_base)} 个文档均已禁用，请到侧边栏启用")
         
         st.markdown("""
         <div class="welcome-box">
