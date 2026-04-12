@@ -107,77 +107,6 @@ EMBED_PRESETS = {
     },
 }
 
-# ========================================================================
-# 🧪 临时 Mock 类（前端独立调试用，对接 A 后请删除或设为 fallback）
-# ========================================================================
-class MockRAGEngine:
-    """模拟 RAG 引擎，供前端独立开发和演示使用"""
-    
-    def __init__(self) -> None:
-        self.documents: Dict[str, Dict[str, Any]] = {}
-        self.qa_history: List[Dict[str, str]] = []
-    
-    def upload_file(self, file_bytes: bytes, file_name: str) -> bool:
-        """模拟文档解析与向量入库"""
-        time.sleep(1.5)  # 模拟处理延迟
-        
-        # 模拟不同文件类型
-        ext = file_name.split('.')[-1].lower()
-        if ext not in ['pdf', 'txt', 'md', 'docx', 'doc']:
-            raise ValueError(f"不支持的文件格式: {ext}")
-        
-        # 模拟成功入库
-        self.documents[file_name] = {
-            'size': len(file_bytes),
-            'upload_time': datetime.now().isoformat(),
-            'chunks': len(file_bytes) // 100  # 模拟分块数
-        }
-        return True
-    
-    def ask_question(self, query: str, chat_history: Optional[List[Dict[str, str]]] = None) -> str:
-        """模拟 RAG 检索与生成回答"""
-        time.sleep(0.8)  # 模拟 RAG 检索延迟
-        
-        current_doc = st.session_state.get('current_doc', '未知文档')
-        
-        responses = [
-            f"✅ 根据《{current_doc}》中的内容，我找到了以下相关信息：\n\n"
-            f"**检索片段 1**：相关章节介绍了核心概念和关键要点...\n\n"
-            f"**检索片段 2**：文档中还提到了实施步骤和注意事项...\n\n"
-            f"基于以上检索结果，针对您的问题「{query}」，我的回答是：\n\n"
-            f"根据文档描述，这个问题涉及多个方面。首先...其次...最后...",
-            
-            f"📚 我在《{current_doc}》中检索到以下相关内容：\n\n"
-            f"相关段落表明，该问题的解决方案需要考虑以下几个因素：\n\n"
-            f"1. **技术层面**：涉及系统架构和算法设计\n"
-            f"2. **实践层面**：需要参考文档中的案例分析\n"
-            f"3. **优化层面**：可参考文档建议的最佳实践\n\n"
-            f"针对「{query}」的具体建议是...",
-            
-            f"🔍 已从《{current_doc}》检索到匹配内容：\n\n"
-            f"文档中的关键信息显示，这个问题应当这样理解：\n\n"
-            f"**核心观点**：文档指出了问题的本质和解决方向\n\n"
-            f"**具体说明**：详细描述了操作步骤和预期结果\n\n"
-            f"**参考建议**：可以结合实际情况进行调整\n\n"
-            f"针对「{query}」的回答：**具体答案内容...**"
-        ]
-        
-        import random
-        response = random.choice(responses)
-        self.qa_history.append({'query': query, 'response': response[:50]})
-        return response
-    
-    def get_document_list(self) -> List[str]:
-        """获取已上传文档列表"""
-        return list(self.documents.keys())
-    
-    def delete_document(self, file_name: str) -> bool:
-        """删除文档"""
-        if file_name in self.documents:
-            del self.documents[file_name]
-            return True
-        return False
-
 
 # ========================================================================
 # 🌐 真实 API 调用类（对接 A 同学后使用）
@@ -554,17 +483,17 @@ def init_rag_engine() -> Any:
                 st.session_state.api_configured = True
                 return engine
             else:
-                st.warning("⚠️ RAG 后端初始化失败，将使用 Mock 模式")
-                return MockRAGEngine()
+                st.warning("⚠️ RAG 后端初始化失败，请检查配置")
+                return None
                 
         except ImportError as e:
-            st.info(f"ℹ️ 未找到 RAG 后端实现，使用 Mock 模式: {e}")
-            return MockRAGEngine()
+            st.info(f"ℹ️ 未找到 RAG 后端实现: {e}")
+            return None
         except Exception as e:
             st.error(f"❌ 初始化 RAG 后端出错: {e}")
-            return MockRAGEngine()
+            return None
     else:
-        return MockRAGEngine()
+        return None
 
 
 def test_api_connection():
@@ -696,10 +625,13 @@ def handle_file_upload(uploaded_file: Any) -> bool:
     if uploaded_file is None:
         return False
     
-    # 检查 API Key 是否已配置
+    # 检查 API Key 和模型是否已配置
     if not st.session_state.llm_api_key:
-        st.session_state.error_msg = "请先在侧边栏填写并保存 LLM API Key"
-        st.error("⚠️ 请先配置 API Key：填写 LLM API Key 后点击「保存配置」")
+        st.error("⚠️ 请先配置服务：展开「服务配置」→ 选择模型 → 填写 API Key → 保存配置")
+        return False
+    
+    if not st.session_state.llm_model:
+        st.error("⚠️ 请先选择对话模型：展开「服务配置」→ 选择模型 → 保存配置")
         return False
     
     # 使用最新配置重新初始化 RAG 引擎
@@ -802,7 +734,7 @@ def render_sidebar():
         
         # 文件上传
         uploaded_file = st.file_uploader(
-            "上传文档 (PDF/TXT/MD)",
+            "选择文档",
             type=["pdf", "txt", "md", "docx", "doc"]
         )
         
@@ -814,9 +746,15 @@ def render_sidebar():
             clear_btn = st.button("清空", use_container_width=True)
         
         if upload_btn and uploaded_file:
-            with st.spinner("处理中..."):
-                handle_file_upload(uploaded_file)
-                st.rerun()
+            # 检查配置
+            if not st.session_state.llm_api_key:
+                st.error("⚠️ 请先配置服务：展开「服务配置」→ 选择模型 → 填写 API Key → 保存配置")
+            elif not st.session_state.llm_model:
+                st.error("⚠️ 请先选择对话模型：展开「服务配置」→ 选择模型 → 保存配置")
+            else:
+                with st.spinner("处理中..."):
+                    handle_file_upload(uploaded_file)
+                    st.rerun()
         
         if clear_btn:
             st.session_state.current_doc = None
@@ -838,7 +776,7 @@ def render_sidebar():
                         llm_preset_default = i
                         break
             
-            selected_llm_preset = st.radio("选择模型", options=llm_preset_options, index=llm_preset_default, horizontal=True, label_visibility="collapsed")
+            selected_llm_preset = st.selectbox("选择模型", options=llm_preset_options, index=llm_preset_default)
             llm_preset = LLM_PRESETS[selected_llm_preset]
             llm_base_url = llm_preset["base_url"]
             llm_model = llm_preset["model"]
@@ -957,17 +895,17 @@ def render_chat_interface():
         </div>
         """, unsafe_allow_html=True)
     
-    # 渲染历史消息 - 用户消息右侧，AI 消息左侧
+    # 渲染历史消息 - 用户消息右侧（头像在右），AI 消息左侧
     for msg in st.session_state.messages:
         if msg["role"] == "user":
-            # 用户消息：右侧，带头像
-            col1, col2 = st.columns([0.9, 0.05])
+            # 用户消息：气泡在左，头像在右
+            col1, col2 = st.columns([0.05, 0.9])
             with col1:
-                st.markdown(f'<div style="background-color:#10A37F;color:white;padding:12px 16px;border-radius:12px 0 12px 12px;text-align:left;max-width:100%;">{msg["content"]}</div>', unsafe_allow_html=True)
-            with col2:
                 st.markdown('<div style="width:36px;height:36px;background:#10A37F;border-radius:50%;display:flex;align-items:center;justify-content:center;color:white;font-size:14px;font-weight:bold;">U</div>', unsafe_allow_html=True)
+            with col2:
+                st.markdown(f'<div style="background-color:#10A37F;color:white;padding:12px 16px;border-radius:0 12px 12px 12px;text-align:left;max-width:100%;">{msg["content"]}</div>', unsafe_allow_html=True)
         else:
-            # AI 消息：左侧
+            # AI 消息：头像在左，气泡在右
             col1, col2 = st.columns([0.03, 0.9])
             with col1:
                 st.markdown('<div style="width:36px;height:36px;background:#343541;border-radius:50%;display:flex;align-items:center;justify-content:center;color:white;font-size:14px;font-weight:bold;">A</div>', unsafe_allow_html=True)
@@ -985,12 +923,12 @@ def render_chat_interface():
             "content": prompt
         })
         
-        # 渲染用户消息 - 右侧
-        col1, col2 = st.columns([0.9, 0.05])
+        # 渲染用户消息 - 头像在右，气泡在左
+        col1, col2 = st.columns([0.05, 0.9])
         with col1:
-            st.markdown(f'<div style="background-color:#10A37F;color:white;padding:12px 16px;border-radius:12px 0 12px 12px;text-align:left;max-width:100%;">{prompt}</div>', unsafe_allow_html=True)
-        with col2:
             st.markdown('<div style="width:36px;height:36px;background:#10A37F;border-radius:50%;display:flex;align-items:center;justify-content:center;color:white;font-size:14px;font-weight:bold;">U</div>', unsafe_allow_html=True)
+        with col2:
+            st.markdown(f'<div style="background-color:#10A37F;color:white;padding:12px 16px;border-radius:0 12px 12px 12px;text-align:left;max-width:100%;">{prompt}</div>', unsafe_allow_html=True)
         
         # 生成 AI 回复 - 左侧
         col1, col2 = st.columns([0.03, 0.9])
