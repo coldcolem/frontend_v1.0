@@ -848,59 +848,10 @@ def handle_question(prompt: str) -> str:
 
 
 
-# ========================================================================
-# 💬 对话列表组件（右侧）
-# ========================================================================
-def render_conversation_panel():
-    """渲染右侧对话列表"""
-    with st.container():
-        st.markdown("### 💬 对话")
-        
-        # 新建对话按钮
-        if st.button("➕ 新对话", use_container_width=True):
-            create_new_conversation()
-        
-        st.divider()
-        
-        # 对话列表
-        conversations = st.session_state.conversations
-        current_id = st.session_state.current_conversation_id
-        
-        for conv_id, conv in reversed(list(conversations.items())):
-            is_active = conv_id == current_id
-            title = conv.get("title", "新对话")[:15]
-            qa_count = conv.get("qa_count", 0)
-            msg_count = len(conv.get("messages", []))
-            
-            # 对话项
-            col1, col2 = st.columns([4, 1])
-            with col1:
-                btn_label = f"💬 {title}"
-                if is_active:
-                    st.markdown(f"**{btn_label}**")
-                    st.caption(f"  {msg_count} 条 · {qa_count} 问答")
-                else:
-                    if st.button(btn_label, key=f"conv_{conv_id}", use_container_width=True):
-                        switch_conversation(conv_id)
-                        st.rerun()
-            with col2:
-                # 删除按钮
-                if len(conversations) > 1:
-                    if st.button("🗑️", key=f"del_{conv_id}", help="删除对话"):
-                        delete_conversation(conv_id)
-                        st.rerun()
-        
-        st.divider()
-        
-        # 当前对话信息
-        conv_id = st.session_state.current_conversation_id
-        if conv_id in conversations:
-            conv = conversations[conv_id]
-            st.caption(f"当前对话：{conv.get('title', '新对话')}")
 
 
 # ========================================================================
-# 🎯 侧边栏组件
+# 🎯 侧边栏组件（包含知识库 + 对话管理）
 # ========================================================================
 def render_sidebar():
     """渲染侧边栏"""
@@ -1029,35 +980,48 @@ def render_sidebar():
                     embed_status = "✅" if st.session_state.embed_connected else "❌"
                     st.markdown(f"Embedding: {embed_status}")
         
+        # 对话管理（可展开面板）
+        with st.expander("💬 对话管理", expanded=False):
+            # 新建对话按钮
+            if st.button("➕ 新建对话", use_container_width=True):
+                create_new_conversation()
+            
+            # 对话列表
+            conversations = st.session_state.conversations
+            current_id = st.session_state.current_conversation_id
+            conv_count = len(conversations)
+            
+            st.caption(f"共 {conv_count} 个对话")
+            
+            for conv_id, conv in reversed(list(conversations.items())):
+                is_active = conv_id == current_id
+                title = conv.get("title", "新对话")[:18]
+                msg_count = len(conv.get("messages", []))
+                
+                col1, col2 = st.columns([4, 1])
+                with col1:
+                    btn_label = f"💬 {title}"
+                    if is_active:
+                        st.markdown(f"**▶ {title}**")
+                        st.caption(f"   {msg_count} 条消息")
+                    else:
+                        if st.button(btn_label, key=f"conv_{conv_id}", use_container_width=True):
+                            switch_conversation(conv_id)
+                            st.rerun()
+                with col2:
+                    if conv_count > 1:
+                        if st.button("×", key=f"del_{conv_id}", help="删除"):
+                            delete_conversation(conv_id)
+                            st.rerun()
+        
         st.divider()
         
+        # 已加载文档列表（下拉栏形式）
         if st.session_state.knowledge_base:
-            doc_names = ", ".join([doc['name'] for doc in st.session_state.knowledge_base[:3]])
-            if len(st.session_state.knowledge_base) > 3:
-                doc_names += f" 等{len(st.session_state.knowledge_base)}个"
-            st.text(f"已加载: {doc_names}")
-            col3, col4 = st.columns(2)
-            with col3:
-                st.metric("问答", st.session_state.qa_count)
-            with col4:
-                st.metric("文档", len(st.session_state.knowledge_base))
-        else:
-            st.text("等待上传文档")
-        
-        st.divider()
-        
-        if st.button("新对话", use_container_width=True):
-            create_new_conversation()
-        
-        # 显示已加载的知识库文档
-        if st.session_state.knowledge_base:
-            with st.expander(f"📚 知识库 ({len(st.session_state.knowledge_base)})"):
+            doc_count = len(st.session_state.knowledge_base)
+            with st.expander(f"📚 已加载文档 ({doc_count})"):
                 for i, doc in enumerate(st.session_state.knowledge_base):
-                    st.caption(f"• {doc['name']}")
-        
-        if st.session_state.upload_history:
-            with st.expander(f"上传历史 ({len(st.session_state.upload_history)})"):
-                for i, doc in enumerate(reversed(st.session_state.upload_history[-5:])):
+                    name = doc.get('name', '未知')
                     size = doc.get('size', 0)
                     time = doc.get('time', '')
                     if size > 1024 * 1024:
@@ -1066,7 +1030,7 @@ def render_sidebar():
                         size_str = f"{size / 1024:.1f} KB"
                     else:
                         size_str = f"{size} B"
-                    st.caption(f"{i+1}. {doc['name']} ({size_str}) {time}")
+                    st.caption(f"• {name} ({size_str}) {time}")
 
 
 # ========================================================================
@@ -1093,7 +1057,7 @@ def render_chat_interface():
                 <li>在左侧上传文档（PDF/TXT）</li>
                 <li>等待系统完成解析入库</li>
                 <li>在下方输入问题开始问答</li>
-                <li>右侧可切换多个对话</li>
+                <li>侧边栏「对话管理」可切换多个对话</li>
             </ol>
             <hr style="margin: 12px 0;">
             <h4>支持功能</h4>
@@ -1179,21 +1143,13 @@ def main():
     # 初始化状态
     init_session_state()
     
-    # 使用列布局：左侧知识库边栏 + 中间对话 + 右侧对话列表
-    col_left, col_main, col_right = st.columns([1, 4, 1])
+    # 渲染左侧边栏（包含知识库 + 对话管理）
+    render_sidebar()
     
-    # 渲染左侧知识库边栏
-    with col_left:
-        render_sidebar()
-    
-    # 渲染右侧对话列表
-    with col_right:
-        render_conversation_panel()
-    
-    # 渲染中间对话界面
-    with col_main:
-        render_chat_interface()
+    # 渲染主对话界面
+    render_chat_interface()
 
 
 if __name__ == "__main__":
     main()
+
