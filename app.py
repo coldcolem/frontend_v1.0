@@ -641,6 +641,10 @@ def init_session_state():
     if "processing" not in st.session_state:
         st.session_state.processing = False
     
+    # 待处理的问题（用于在 rerun 后继续处理）
+    if "pending_question" not in st.session_state:
+        st.session_state.pending_question = None
+    
     # 错误消息
     if "error_msg" not in st.session_state:
         st.session_state.error_msg = None
@@ -698,6 +702,9 @@ def switch_conversation(conv_id):
     if conv_id in st.session_state.conversations:
         st.session_state.current_conversation_id = conv_id
         st.session_state.messages = st.session_state.conversations[conv_id]["messages"]
+        # 切换对话时重置处理状态，避免影响其他对话
+        st.session_state.processing = False
+        st.session_state.pending_question = None
 
 
 def delete_conversation(conv_id):
@@ -843,6 +850,7 @@ def handle_file_upload(uploaded_file: Any) -> bool:
 # ========================================================================
 # 💬 问答处理
 # ========================================================================
+
 def handle_question(prompt: str) -> str:
     """处理用户问题，支持多轮对话"""
     if not st.session_state.doc_ready:
@@ -874,6 +882,7 @@ def handle_question(prompt: str) -> str:
         
     except Exception as e:
         return f"⚠️ 回答生成失败：{str(e)}"
+
 
 
 
@@ -1131,38 +1140,72 @@ def render_chat_interface():
             with col2:
                 st.markdown(f'<div style="background-color:#343541;color:#ECECEC;padding:12px 16px;border-radius:0 12px 12px 12px;text-align:left;max-width:100%;margin-bottom:8px;">{msg["content"]}</div>', unsafe_allow_html=True)
     
-    # 问答输入框
+    # 问答输入框（AI思考时禁用）
     if st.session_state.knowledge_base:
         doc_count = len(st.session_state.knowledge_base)
         placeholder = f"向知识库（{doc_count}个文档）提问..."
     else:
         placeholder = "请先上传文档后提问"
-    disabled = not st.session_state.doc_ready or st.session_state.processing
     
-    if prompt := st.chat_input(placeholder, disabled=disabled):
-        # 保存用户消息到当前对话
-        save_message_to_current("user", prompt)
-        st.session_state.messages = get_current_messages()
+    # 如果正在处理中，注入 CSS 隐藏输入框
+    if st.session_state.get("processing") and st.session_state.get("pending_question"):
+        # 使用 CSS 隐藏聊天输入区域
+        st.markdown("""
+            <style>
+            /* 隐藏聊天表单和发送按钮 */
+            div[data-testid="stForm"] { display: none !important; }
+            </style>
+        """, unsafe_allow_html=True)
         
-        # 渲染用户消息 - 头像在右，气泡在左
-        col1, col2 = st.columns([0.05, 0.9])
-        with col1:
-            st.markdown('<div style="width:36px;height:36px;background:#10A37F;border-radius:50%;display:flex;align-items:center;justify-content:center;color:white;font-size:14px;font-weight:bold;">U</div>', unsafe_allow_html=True)
-        with col2:
-            st.markdown(f'<div style="background-color:#10A37F;color:white;padding:12px 16px;border-radius:0 12px 12px 12px;text-align:left;max-width:100%;margin-bottom:8px;">{prompt}</div>', unsafe_allow_html=True)
+        # 处理 AI 回复
+        prompt = st.session_state.pending_question
         
-        # 生成 AI 回复 - 左侧
+        # 生成 AI 回复
         col1, col2 = st.columns([0.03, 0.9])
         with col1:
             st.markdown('<div style="width:36px;height:36px;background:#343541;border-radius:50%;display:flex;align-items:center;justify-content:center;color:white;font-size:14px;font-weight:bold;">A</div>', unsafe_allow_html=True)
         with col2:
-            with st.spinner("思考中..."):
+            with st.spinner("AI 思考中..."):
                 answer = handle_question(prompt)
-                st.markdown(f'<div style="background-color:#343541;color:#ECECEC;padding:12px 16px;border-radius:0 12px 12px 12px;text-align:left;max-width:100%;margin-bottom:8px;">{answer}</div>', unsafe_allow_html=True)
-                
-                # 保存 AI 回复到当前对话
-                save_message_to_current("assistant", answer)
-                st.session_state.messages = get_current_messages()
+            st.markdown(f'<div style="background-color:#343541;color:#ECECEC;padding:12px 16px;border-radius:0 12px 12px 12px;text-align:left;max-width:100%;margin-bottom:8px;">{answer}</div>', unsafe_allow_html=True)
+            
+            # 保存 AI 回复到当前对话
+            save_message_to_current("assistant", answer)
+            st.session_state.messages = get_current_messages()
+        
+        # 处理完成，重置状态
+        st.session_state.pending_question = None
+        st.session_state.processing = False
+        
+        # 重新渲染页面以显示输入框
+        st.rerun()
+    
+    # 正常状态：显示输入框
+    else:
+        # 使用 form 来确保输入框在提交时被正确处理
+        with st.form(key="chat_form", clear_on_submit=True):
+            col1, col2 = st.columns([0.85, 0.15])
+            with col1:
+                prompt = st.text_input(
+                    "问题",
+                    placeholder=placeholder,
+                    label_visibility="collapsed"
+                )
+            with col2:
+                submitted = st.form_submit_button("发送", use_container_width=True)
+        
+        # 检查是否有提交
+        if submitted and prompt:
+            # 保存用户消息到当前对话
+            save_message_to_current("user", prompt)
+            st.session_state.messages = get_current_messages()
+            
+            # 标记为处理中，保存待处理的问题
+            st.session_state.processing = True
+            st.session_state.pending_question = prompt
+            
+            # 重新渲染页面
+            st.rerun()
 
 
 # ========================================================================
