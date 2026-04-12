@@ -12,7 +12,7 @@ from langchain_community.document_loaders import PyPDFLoader, TextLoader, PyMuPD
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langchain_community.vectorstores import FAISS
 
-from core.interfaces import (
+from .interfaces import (
     IRAGBackend,
     LLMConfig,
     EmbedConfig,

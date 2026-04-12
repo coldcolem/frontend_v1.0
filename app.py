@@ -18,20 +18,6 @@ from typing import List, Dict, Any, Optional
 # ========================================================================
 # 🔌 A 同学接口导入
 # ========================================================================
-import sys
-import os
-
-# 搜索 core 模块的目录
-_app_dir = os.path.dirname(os.path.abspath(__file__))
-_search_paths = [
-    _app_dir,
-    os.path.dirname(_app_dir),  # 父目录
-    os.path.dirname(os.path.dirname(_app_dir)),  # 祖父目录
-]
-for _p in _search_paths:
-    if _p not in sys.path:
-        sys.path.insert(0, _p)
-
 try:
     from core.interfaces import IRAGBackend, LLMConfig, EmbedConfig, Citation
     from core.rag_backend import LangChainRAGBackend
