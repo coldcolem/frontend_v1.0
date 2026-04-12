@@ -572,9 +572,25 @@ def test_api_connection():
 def init_session_state():
     """统一初始化所有 Session State"""
     
-    # 对话历史
+    # 多对话管理
+    if "conversations" not in st.session_state:
+        # 创建默认对话
+        import uuid
+        default_id = str(uuid.uuid4())[:8]
+        st.session_state.conversations = {
+            default_id: {
+                "title": "新对话",
+                "messages": [],
+                "qa_count": 0
+            }
+        }
+        st.session_state.current_conversation_id = default_id
+    
+    # 当前对话的消息（便捷访问）
     if "messages" not in st.session_state:
-        st.session_state.messages = []
+        st.session_state.messages = st.session_state.conversations.get(
+            st.session_state.current_conversation_id, {}
+        ).get("messages", [])
     
     # API 配置状态
     if "api_configured" not in st.session_state:
@@ -646,14 +662,77 @@ def init_session_state():
 
 
 def reset_chat_history():
-    """重置对话历史"""
+    """重置当前对话历史"""
+    conv_id = st.session_state.current_conversation_id
+    if conv_id in st.session_state.conversations:
+        st.session_state.conversations[conv_id]["messages"] = []
+        st.session_state.conversations[conv_id]["qa_count"] = 0
     st.session_state.messages = []
-    st.session_state.qa_count = 0
 
 
 def clear_error():
     """清除错误消息"""
     st.session_state.error_msg = None
+
+
+def create_new_conversation():
+    """创建新对话"""
+    import uuid
+    new_id = str(uuid.uuid4())[:8]
+    st.session_state.conversations[new_id] = {
+        "title": "新对话",
+        "messages": [],
+        "qa_count": 0
+    }
+    st.session_state.current_conversation_id = new_id
+    st.session_state.messages = []
+    st.rerun()
+
+
+def switch_conversation(conv_id):
+    """切换到指定对话"""
+    if conv_id in st.session_state.conversations:
+        st.session_state.current_conversation_id = conv_id
+        st.session_state.messages = st.session_state.conversations[conv_id]["messages"]
+
+
+def delete_conversation(conv_id):
+    """删除指定对话"""
+    if len(st.session_state.conversations) > 1:
+        del st.session_state.conversations[conv_id]
+        if st.session_state.current_conversation_id == conv_id:
+            # 切换到第一个对话
+            st.session_state.current_conversation_id = list(st.session_state.conversations.keys())[0]
+            st.session_state.messages = st.session_state.conversations[st.session_state.current_conversation_id]["messages"]
+
+
+def update_conversation_title(conv_id, title):
+    """更新对话标题"""
+    if conv_id in st.session_state.conversations:
+        st.session_state.conversations[conv_id]["title"] = title
+
+
+def get_current_messages():
+    """获取当前对话的消息"""
+    conv_id = st.session_state.current_conversation_id
+    return st.session_state.conversations.get(conv_id, {}).get("messages", [])
+
+
+def save_message_to_current(role, content):
+    """保存消息到当前对话"""
+    conv_id = st.session_state.current_conversation_id
+    if conv_id in st.session_state.conversations:
+        st.session_state.conversations[conv_id]["messages"].append({
+            "role": role,
+            "content": content
+        })
+        # 更新标题为第一条用户消息
+        if role == "user" and st.session_state.conversations[conv_id]["title"] == "新对话":
+            title = content[:20] + "..." if len(content) > 20 else content
+            st.session_state.conversations[conv_id]["title"] = title
+        # 更新统计
+        if role == "assistant":
+            st.session_state.conversations[conv_id]["qa_count"] += 1
 
 
 # ========================================================================
@@ -744,9 +823,11 @@ def handle_question(prompt: str) -> str:
         # 构建 chat_history（传递给 A 的接口用于多轮对话）
         chat_history: Optional[List[Dict[str, str]]] = None
         if INTERFACE_AVAILABLE:
+            # 获取当前对话的消息
+            current_messages = get_current_messages()
             # 只保留最近10轮对话作为历史
             recent_messages = [
-                msg for msg in st.session_state.messages
+                msg for msg in current_messages
                 if msg.get("role") in ["user", "assistant"]
             ][-20:]  # 10轮 = 20条消息
             
@@ -760,11 +841,62 @@ def handle_question(prompt: str) -> str:
             query=prompt,
             chat_history=chat_history
         )
-        st.session_state.qa_count += 1
         return answer
         
     except Exception as e:
         return f"⚠️ 回答生成失败：{str(e)}"
+
+
+
+# ========================================================================
+# 💬 对话列表组件（右侧）
+# ========================================================================
+def render_conversation_panel():
+    """渲染右侧对话列表"""
+    with st.container():
+        st.markdown("### 💬 对话")
+        
+        # 新建对话按钮
+        if st.button("➕ 新对话", use_container_width=True):
+            create_new_conversation()
+        
+        st.divider()
+        
+        # 对话列表
+        conversations = st.session_state.conversations
+        current_id = st.session_state.current_conversation_id
+        
+        for conv_id, conv in reversed(list(conversations.items())):
+            is_active = conv_id == current_id
+            title = conv.get("title", "新对话")[:15]
+            qa_count = conv.get("qa_count", 0)
+            msg_count = len(conv.get("messages", []))
+            
+            # 对话项
+            col1, col2 = st.columns([4, 1])
+            with col1:
+                btn_label = f"💬 {title}"
+                if is_active:
+                    st.markdown(f"**{btn_label}**")
+                    st.caption(f"  {msg_count} 条 · {qa_count} 问答")
+                else:
+                    if st.button(btn_label, key=f"conv_{conv_id}", use_container_width=True):
+                        switch_conversation(conv_id)
+                        st.rerun()
+            with col2:
+                # 删除按钮
+                if len(conversations) > 1:
+                    if st.button("🗑️", key=f"del_{conv_id}", help="删除对话"):
+                        delete_conversation(conv_id)
+                        st.rerun()
+        
+        st.divider()
+        
+        # 当前对话信息
+        conv_id = st.session_state.current_conversation_id
+        if conv_id in conversations:
+            conv = conversations[conv_id]
+            st.caption(f"当前对话：{conv.get('title', '新对话')}")
 
 
 # ========================================================================
@@ -778,7 +910,7 @@ def render_sidebar():
         # 文件上传（支持多文件）
         uploaded_files = st.file_uploader(
             "选择文档（支持多选）",
-            type=["pdf", "txt", "md", "docx", "doc"],
+            type=["pdf", "txt"],
             accept_multiple_files=True
         )
         
@@ -915,8 +1047,7 @@ def render_sidebar():
         st.divider()
         
         if st.button("新对话", use_container_width=True):
-            reset_chat_history()
-            st.rerun()
+            create_new_conversation()
         
         # 显示已加载的知识库文档
         if st.session_state.knowledge_base:
@@ -944,8 +1075,9 @@ def render_sidebar():
 def render_chat_interface():
     """渲染主对话界面"""
     
-    # 欢迎消息（首次打开）
-    if not st.session_state.messages:
+    # 欢迎消息（当前对话无消息时）
+    current_messages = get_current_messages()
+    if not current_messages:
         st.markdown('<p class="welcome-title">RAG 智能问答</p>', unsafe_allow_html=True)
         st.markdown('<p class="welcome-subtitle">基于检索增强生成技术的知识交互系统</p>', unsafe_allow_html=True)
         
@@ -958,9 +1090,10 @@ def render_chat_interface():
         <div class="welcome-box">
             <h4>欢迎使用</h4>
             <ol>
-                <li>在左侧上传文档（PDF/TXT/MD）</li>
+                <li>在左侧上传文档（PDF/TXT）</li>
                 <li>等待系统完成解析入库</li>
                 <li>在下方输入问题开始问答</li>
+                <li>右侧可切换多个对话</li>
             </ol>
             <hr style="margin: 12px 0;">
             <h4>支持功能</h4>
@@ -968,13 +1101,15 @@ def render_chat_interface():
                 <li>多格式文档解析</li>
                 <li>智能向量检索</li>
                 <li>多轮对话上下文</li>
+                <li>多对话独立管理</li>
                 <li>参考来源标注</li>
             </ul>
         </div>
         """, unsafe_allow_html=True)
     
     # 渲染历史消息 - 用户消息右侧（头像在右），AI 消息左侧
-    for msg in st.session_state.messages:
+    current_messages = get_current_messages()
+    for msg in current_messages:
         if msg["role"] == "user":
             # 用户消息：气泡在左，头像在右
             col1, col2 = st.columns([0.05, 0.9])
@@ -999,11 +1134,9 @@ def render_chat_interface():
     disabled = not st.session_state.doc_ready or st.session_state.processing
     
     if prompt := st.chat_input(placeholder, disabled=disabled):
-        # 添加用户消息到历史
-        st.session_state.messages.append({
-            "role": "user",
-            "content": prompt
-        })
+        # 保存用户消息到当前对话
+        save_message_to_current("user", prompt)
+        st.session_state.messages = get_current_messages()
         
         # 渲染用户消息 - 头像在右，气泡在左
         col1, col2 = st.columns([0.05, 0.9])
@@ -1021,10 +1154,9 @@ def render_chat_interface():
                 answer = handle_question(prompt)
                 st.markdown(f'<div style="background-color:#343541;color:#ECECEC;padding:12px 16px;border-radius:0 12px 12px 12px;text-align:left;max-width:100%;margin-bottom:8px;">{answer}</div>', unsafe_allow_html=True)
                 
-                st.session_state.messages.append({
-                    "role": "assistant",
-                    "content": answer
-                })
+                # 保存 AI 回复到当前对话
+                save_message_to_current("assistant", answer)
+                st.session_state.messages = get_current_messages()
 
 
 # ========================================================================
@@ -1047,9 +1179,20 @@ def main():
     # 初始化状态
     init_session_state()
     
-    # 渲染界面
-    render_sidebar()
-    render_chat_interface()
+    # 使用列布局：左侧知识库边栏 + 中间对话 + 右侧对话列表
+    col_left, col_main, col_right = st.columns([1, 4, 1])
+    
+    # 渲染左侧知识库边栏
+    with col_left:
+        render_sidebar()
+    
+    # 渲染右侧对话列表
+    with col_right:
+        render_conversation_panel()
+    
+    # 渲染中间对话界面
+    with col_main:
+        render_chat_interface()
 
 
 if __name__ == "__main__":
