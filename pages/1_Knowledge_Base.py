@@ -17,23 +17,24 @@ html, body, [class*="css"] { font-family: 'Inter', sans-serif; }
 .page-title {
     font-size: 1.4rem;
     font-weight: 600;
-    color: #1a202c;
     margin-bottom: 0.2rem;
+    color: inherit;
 }
 .page-subtitle {
     font-size: 0.88rem;
-    color: #718096;
     margin-bottom: 1.5rem;
+    color: inherit;
+    opacity: 0.7;
 }
 .stat-card {
-    background: #f7fafc;
-    border: 1px solid #e2e8f0;
+    border: 1px solid var(--streamlit-border-color, #e2e8f0);
     border-radius: 8px;
     padding: 0.9rem 1.1rem;
     text-align: center;
+    background: var(--streamlit-secondary-background-color, #f7fafc);
 }
-.stat-label { font-size: 0.75rem; color: #718096; font-weight: 500; margin-bottom: 0.2rem; }
-.stat-value { font-size: 1.4rem; font-weight: 600; color: #2d3748; }
+.stat-label { font-size: 0.75rem; font-weight: 500; margin-bottom: 0.2rem; color: inherit; opacity: 0.6; }
+.stat-value { font-size: 1.4rem; font-weight: 600; color: inherit; }
 </style>
 """,
     unsafe_allow_html=True,

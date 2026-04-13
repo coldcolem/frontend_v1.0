@@ -8,9 +8,9 @@ st.markdown("""
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap');
 html, body, [class*="css"] { font-family: 'Inter', sans-serif; }
-.page-title { font-size: 1.4rem; font-weight: 600; color: #1a202c; margin-bottom: 0.2rem; }
-.page-subtitle { font-size: 0.88rem; color: #718096; margin-bottom: 1.2rem; }
-.field-label { font-size: 0.8rem; font-weight: 500; color: #4a5568; margin-bottom: 0.2rem; }
+.page-title { font-size: 1.4rem; font-weight: 600; margin-bottom: 0.2rem; color: inherit; }
+.page-subtitle { font-size: 0.88rem; margin-bottom: 1.2rem; color: inherit; opacity: 0.7; }
+.field-label { font-size: 0.8rem; font-weight: 500; margin-bottom: 0.2rem; color: inherit; }
 </style>
 """, unsafe_allow_html=True)
 
@@ -72,20 +72,20 @@ with col1:
         index=list(LLM_PRESETS.keys()).index(st.session_state.get("_cfg_llm_preset", "自定义")),
         key="_w_llm_preset"
     )
-    st.session_state["_cfg_llm_preset"] = llm_preset
 
     # 获取预设值
     preset_llm = LLM_PRESETS[llm_preset]
 
-    # Base URL - 下拉预填但可编辑
-    if llm_preset == "自定义":
-        default_url = st.session_state.cfg_llm_base_url
-    else:
-        default_url = preset_llm["base_url"]
+    # 当选择预设时，更新 session_state 以便 text_input 能显示
+    if llm_preset != "自定义":
+        st.session_state["_w_llm_base_url"] = preset_llm["base_url"]
+        st.session_state["_w_llm_model"] = preset_llm["model"]
 
+    st.session_state["_cfg_llm_preset"] = llm_preset
+
+    # Base URL - 下拉预填但可编辑
     llm_base_url = st.text_input(
         "Base URL（留空使用 OpenAI 官方地址）",
-        value=default_url,
         placeholder="https://api.example.com/v1",
         key="_w_llm_base_url"
     )
@@ -100,19 +100,13 @@ with col1:
     )
 
     # Model - 下拉预填但可编辑
-    if llm_preset == "自定义":
-        default_model = st.session_state.cfg_llm_model
-    else:
-        default_model = preset_llm["model"]
-
     llm_model = st.text_input(
         "Model Name",
-        value=default_model,
         placeholder="gpt-3.5-turbo",
         key="_w_llm_model"
     )
 
-    # 同步到持久化 key
+    # 同步到持久化 key（仅"自定义"模式或用户手动编辑时保存）
     st.session_state.cfg_llm_base_url = llm_base_url
     st.session_state.cfg_llm_api_key  = llm_api_key
     st.session_state.cfg_llm_model    = llm_model
@@ -143,20 +137,20 @@ with col2:
         index=list(EMBEDDING_PRESETS.keys()).index(st.session_state.get("_cfg_emb_preset", "自定义")),
         key="_w_emb_preset"
     )
-    st.session_state["_cfg_emb_preset"] = emb_preset
 
     # 获取预设值
     preset_emb = EMBEDDING_PRESETS[emb_preset]
 
-    # Base URL - 下拉预填但可编辑
-    if emb_preset == "自定义":
-        default_emb_url = st.session_state.cfg_emb_base_url
-    else:
-        default_emb_url = preset_emb["base_url"]
+    # 当选择预设时，更新 session_state 以便 text_input 能显示
+    if emb_preset != "自定义":
+        st.session_state["_w_emb_base_url"] = preset_emb["base_url"]
+        st.session_state["_w_emb_model"] = preset_emb["model"]
 
+    st.session_state["_cfg_emb_preset"] = emb_preset
+
+    # Base URL - 下拉预填但可编辑
     emb_base_url = st.text_input(
         "Base URL（留空使用 OpenAI 官方地址）",
-        value=default_emb_url,
         placeholder="https://api.example.com/v1",
         key="_w_emb_base_url"
     )
@@ -171,14 +165,8 @@ with col2:
     )
 
     # Model - 下拉预填但可编辑
-    if emb_preset == "自定义":
-        default_emb_model = st.session_state.cfg_emb_model
-    else:
-        default_emb_model = preset_emb["model"]
-
     emb_model = st.text_input(
         "Model Name",
-        value=default_emb_model,
         placeholder="text-embedding-ada-002",
         key="_w_emb_model"
     )
@@ -208,9 +196,6 @@ st.divider()
 backend = st.session_state.backend
 is_initialized = backend.llm is not None and backend.embeddings is not None
 
-if is_initialized:
-    st.success("后端已初始化，可前往知识库管理上传文档。")
-
 if st.button("初始化后端", type="primary", use_container_width=True):
     with st.spinner("正在初始化..."):
         ok = backend.initialize(
@@ -226,15 +211,11 @@ if st.button("初始化后端", type="primary", use_container_width=True):
             )
         )
     if ok:
-        st.success("后端初始化成功，可前往知识库管理上传文档。")
+        st.success("初始化成功")
     else:
         st.error("初始化失败，请检查配置后重试。")
 
 st.divider()
 
-st.markdown("**知识库管理**")
+st.markdown("**知识库状态**")
 st.caption(f"当前已入库 {backend._chunk_count} 个 Chunk，索引状态：{'就绪' if backend.vector_store else '空库'}")
-if st.button("清空知识库（释放内存）"):
-    backend.clear_index()
-    st.success("知识库已清空。")
-    st.rerun()

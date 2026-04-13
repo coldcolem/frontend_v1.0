@@ -7,14 +7,18 @@ st.markdown("""
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap');
 html, body, [class*="css"] { font-family: 'Inter', sans-serif; }
-.page-title { font-size: 1.4rem; font-weight: 600; color: #1a202c; margin-bottom: 0.2rem; }
-.page-subtitle { font-size: 0.88rem; color: #718096; margin-bottom: 1.5rem; }
+.page-title { font-size: 1.4rem; font-weight: 600; margin-bottom: 0.2rem; color: inherit; }
+.page-subtitle { font-size: 0.88rem; margin-bottom: 1.5rem; color: inherit; opacity: 0.7; }
 .status-card { padding: 1rem 1.2rem; border-radius: 0.5rem; margin-bottom: 0.8rem; }
-.status-ok { background: #f0fdf4; border-left: 3px solid #22c55e; }
-.status-warn { background: #fefce8; border-left: 3px solid #eab308; }
-.status-error { background: #fef2f2; border-left: 3px solid #ef4444; }
-.stat-value { font-size: 1.6rem; font-weight: 600; color: #1a202c; }
-.stat-label { font-size: 0.8rem; color: #718096; }
+.status-ok { border-left: 3px solid #22c55e; background: rgba(34, 197, 94, 0.1); }
+.status-warn { border-left: 3px solid #eab308; background: rgba(234, 179, 8, 0.1); }
+.status-error { border-left: 3px solid #ef4444; background: rgba(239, 68, 68, 0.1); }
+.stat-value { font-size: 1.6rem; font-weight: 600; color: inherit; }
+.stat-label { font-size: 0.8rem; color: inherit; opacity: 0.6; }
+.status-text-ok { color: #22c55e; font-weight: 500; }
+.status-text-warn { color: #eab308; font-weight: 500; }
+.status-text-error { color: #ef4444; font-weight: 500; }
+.status-hint { font-size: 0.85rem; margin-left: 0.5rem; opacity: 0.7; }
 </style>
 """, unsafe_allow_html=True)
 
@@ -36,16 +40,16 @@ has_docs = backend.vector_store is not None
 
 if is_initialized and has_docs:
     st.markdown("""<div class="status-card status-ok">
-    <span style="color:#16a34a;font-weight:500">● 系统就绪</span>
-    <span style="color:#718096;font-size:0.85rem;margin-left:0.5rem">可前往 Chat 开始问答</span></div>""", unsafe_allow_html=True)
+    <span class="status-text-ok">● 系统就绪</span>
+    <span class="status-hint">可前往 Chat 开始问答</span></div>""", unsafe_allow_html=True)
 elif is_initialized:
     st.markdown("""<div class="status-card status-warn">
-    <span style="color:#ca8a04;font-weight:500">● 已初始化</span>
-    <span style="color:#718096;font-size:0.85rem;margin-left:0.5rem">请前往 Knowledge Base 上传文档</span></div>""", unsafe_allow_html=True)
+    <span class="status-text-warn">● 已初始化</span>
+    <span class="status-hint">请前往 Knowledge Base 上传文档</span></div>""", unsafe_allow_html=True)
 else:
     st.markdown("""<div class="status-card status-error">
-    <span style="color:#dc2626;font-weight:500">● 未初始化</span>
-    <span style="color:#718096;font-size:0.85rem;margin-left:0.5rem">请前往 Settings 配置服务并初始化后端</span></div>""", unsafe_allow_html=True)
+    <span class="status-text-error">● 未初始化</span>
+    <span class="status-hint">请前往 Settings 配置服务并初始化后端</span></div>""", unsafe_allow_html=True)
 
 # ══════════════════════════════════════════════════════════════════
 # 统计信息

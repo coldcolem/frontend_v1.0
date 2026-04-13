@@ -30,12 +30,13 @@ html, body, [class*="css"] {
 .top-bar h2 {
     font-size: 1.4rem;
     font-weight: 600;
-    color: #1a202c;
     margin: 0;
+    color: inherit;
 }
 .top-bar span {
     font-size: 0.85rem;
-    color: #a0aec0;
+    color: inherit;
+    opacity: 0.6;
 }
 
 /* 用户消息 */
@@ -45,8 +46,6 @@ html, body, [class*="css"] {
     margin-bottom: 1rem;
 }
 .msg-user {
-    background: #2d3748;
-    color: #f7fafc;
     border-radius: 14px 14px 3px 14px;
     padding: 0.7rem 1rem;
     max-width: 68%;
@@ -54,21 +53,23 @@ html, body, [class*="css"] {
     line-height: 1.6;
     white-space: pre-wrap;
     word-break: break-word;
+    background: var(--streamlit-dark-primary-color, #2d3748);
+    color: var(--streamlit-dark-font-color, #f7fafc);
 }
 
 /* AI 消息 */
 .msg-ai-wrap { margin-bottom: 0.5rem; }
 .msg-ai {
-    background: #ffffff;
-    border: 1px solid #e2e8f0;
     border-radius: 3px 14px 14px 14px;
     padding: 0.85rem 1.1rem;
     max-width: 80%;
     font-size: 0.93rem;
     line-height: 1.7;
-    color: #2d3748;
     white-space: pre-wrap;
     word-break: break-word;
+    background: var(--streamlit-background-color, #ffffff);
+    border: 1px solid var(--streamlit-border-color, #e2e8f0);
+    color: inherit;
 }
 
 /* 角色标签 */
@@ -77,8 +78,9 @@ html, body, [class*="css"] {
     font-weight: 600;
     letter-spacing: 0.06em;
     text-transform: uppercase;
-    color: #a0aec0;
     margin-bottom: 0.3rem;
+    color: inherit;
+    opacity: 0.6;
 }
 .role-label-user { text-align: right; }
 
@@ -95,23 +97,24 @@ html, body, [class*="css"] {
     font-size: 0.75rem;
 }
 .citation-tag {
-    background: #edf2f7;
-    color: #4a5568;
     padding: 0.12rem 0.5rem;
     border-radius: 4px;
     font-size: 0.72rem;
     font-weight: 500;
+    background: var(--streamlit-secondary-background-color, #edf2f7);
+    color: inherit;
 }
 
 /* 单条引文卡片 */
 .citation-card {
-    background: #fafaf9;
-    border: 1px solid #e5e7eb;
+    border: 1px solid var(--streamlit-border-color, #e5e7eb);
     border-left: 2px solid #d97706;
     border-radius: 4px 6px 6px 4px;
     padding: 0.5rem 0.7rem;
     margin-bottom: 0.35rem;
     font-size: 0.78rem;
+    background: var(--streamlit-secondary-background-color, #fafaf9);
+    color: inherit;
 }
 .citation-details {
     margin-top: 0.15rem;
@@ -119,28 +122,30 @@ html, body, [class*="css"] {
 .citation-details summary {
     list-style: none;
     cursor: pointer;
-    color: #975a16;
     font-size: 0.72rem;
     font-weight: 500;
+    color: #975a16;
 }
 .citation-details summary::-webkit-details-marker { display: none; }
 .citation-preview {
-    color: #4a5568;
     line-height: 1.5;
     font-size: 0.78rem;
+    color: inherit;
+    opacity: 0.8;
 }
 
 /* 空状态 */
 .empty-state {
     text-align: center;
     padding: 5rem 2rem;
-    color: #cbd5e0;
+    color: inherit;
+    opacity: 0.5;
 }
-.empty-state h3 { color: #a0aec0; font-size: 1.05rem; font-weight: 500; margin-bottom: 0.4rem; }
-.empty-state p  { font-size: 0.85rem; }
+.empty-state h3 { font-size: 1.05rem; font-weight: 500; margin-bottom: 0.4rem; color: inherit; }
+.empty-state p  { font-size: 0.85rem; color: inherit; }
 
 /* 侧边栏 */
-.sb-status { font-size: 0.83rem; color: #4a5568; line-height: 1.9; }
+.sb-status { font-size: 0.83rem; line-height: 1.9; color: inherit; }
 .sb-dot-on  { color: #48bb78; }
 .sb-dot-off { color: #fc8181; }
 </style>
@@ -245,6 +250,10 @@ def render_message(msg: dict):
 if "chat_messages" not in st.session_state:
     st.session_state.chat_messages = []
 
+# 控制输入框是否可用
+if "input_disabled" not in st.session_state:
+    st.session_state.input_disabled = False
+
 # ══════════════════════════════════════════════════════════════════════
 # 侧边栏
 # ══════════════════════════════════════════════════════════════════════
@@ -333,31 +342,48 @@ elif not has_index:
         use_container_width=True,
     )
 else:
-    user_input = st.chat_input("输入问题...", key="chat_input")
+    # 使用 disabled 参数控制输入框
+    user_input = st.chat_input(
+        "输入问题..." if not st.session_state.input_disabled else "等待回复中...",
+        key="chat_input",
+        disabled=st.session_state.input_disabled
+    )
 
     if user_input and user_input.strip():
         query = user_input.strip()
-
-        st.session_state.chat_messages.append(
-            {"role": "user", "content": query, "citations": []}
-        )
-
-        history_for_backend = [
-            {"role": m["role"], "content": m["content"]}
-            for m in st.session_state.chat_messages[:-1]
-        ]
-
-        with st.spinner("检索中..."):
-            try:
-                result = backend.chat(query, history_for_backend)
-                answer = result["answer"]
-                citations = result["citations"]
-            except Exception as e:
-                answer = f"发生错误：{e}"
-                citations = []
-
-        st.session_state.chat_messages.append(
-            {"role": "assistant", "content": answer, "citations": citations}
-        )
-
+        # 保存查询并禁用输入框
+        st.session_state.pending_query = query
+        st.session_state.input_disabled = True
         st.rerun()
+
+# 处理待处理的查询（回复生成）
+if st.session_state.input_disabled and "pending_query" in st.session_state:
+    query = st.session_state.pending_query
+
+    # 添加用户消息
+    st.session_state.chat_messages.append(
+        {"role": "user", "content": query, "citations": []}
+    )
+
+    history_for_backend = [
+        {"role": m["role"], "content": m["content"]}
+        for m in st.session_state.chat_messages[:-1]
+    ]
+
+    with st.spinner("检索中..."):
+        try:
+            result = backend.chat(query, history_for_backend)
+            answer = result["answer"]
+            citations = result["citations"]
+        except Exception as e:
+            answer = f"发生错误：{e}"
+            citations = []
+
+    st.session_state.chat_messages.append(
+        {"role": "assistant", "content": answer, "citations": citations}
+    )
+
+    # 重新启用输入框
+    st.session_state.input_disabled = False
+    st.session_state.pop("pending_query", None)
+    st.rerun()
