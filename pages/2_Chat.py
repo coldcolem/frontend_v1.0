@@ -332,16 +332,16 @@ with st.sidebar:
     conversations_list = list(st.session_state.conversations.values())
     conversations_list.sort(key=lambda x: x["created_at"], reverse=True)
     
-    # 显示对话列表（排除当前选中的）
+    # 显示对话列表
     for conv in conversations_list:
         conv_id = conv["id"]
         is_current = conv_id == current_conv_id
         msg_count = len(conv["messages"])
-        preview = conv["messages"][0]["content"][:20] + "..." if msg_count > 0 else "空对话"
+        preview = conv["messages"][0]["content"][:15] + "..." if msg_count > 0 else "新对话"
         
-        col1, col2 = st.columns([4, 1])
+        # 使用3:1比例，适配手机端
+        col1, col2 = st.columns([3, 1])
         with col1:
-            btn_label = f"对话 {len(st.session_state.conversations) - list(reversed(conversations_list)).index(conv)}"
             if st.button(
                 f"{'● ' if is_current else ''}{preview}",
                 key=f"conv_{conv_id}",
@@ -352,7 +352,7 @@ with st.sidebar:
                 st.session_state.cancel_requested = False
                 st.rerun()
         with col2:
-            if st.button("x", key=f"del_{conv_id}", help="删除对话"):
+            if st.button("删除", key=f"del_{conv_id}", help="删除对话", use_container_width=True):
                 del st.session_state.conversations[conv_id]
                 if st.session_state.current_conversation_id == conv_id:
                     remaining = list(st.session_state.conversations.keys())

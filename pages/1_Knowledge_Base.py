@@ -31,10 +31,9 @@ html, body, [class*="css"] { font-family: 'Inter', sans-serif; }
     border-radius: 8px;
     padding: 0.9rem 1.1rem;
     text-align: center;
-    background: var(--streamlit-secondary-background-color, #f7fafc);
 }
-.stat-label { font-size: 0.75rem; font-weight: 500; margin-bottom: 0.2rem; color: inherit; opacity: 0.6; }
-.stat-value { font-size: 1.4rem; font-weight: 600; color: inherit; }
+.stat-label { font-size: 0.75rem; font-weight: 500; margin-bottom: 0.2rem; opacity: 0.7; }
+.stat-value { font-size: 1.4rem; font-weight: 600; }
 </style>
 """,
     unsafe_allow_html=True,
