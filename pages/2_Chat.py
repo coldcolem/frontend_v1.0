@@ -279,6 +279,10 @@ chat_messages = current_conversation["messages"] if current_conversation else []
 if "input_disabled" not in st.session_state:
     st.session_state.input_disabled = False
 
+# 控制停止标志
+if "cancel_requested" not in st.session_state:
+    st.session_state.cancel_requested = False
+
 # ══════════════════════════════════════════════════════════════════════
 # 侧边栏
 # ══════════════════════════════════════════════════════════════════════
@@ -321,6 +325,7 @@ with st.sidebar:
         }
         st.session_state.current_conversation_id = conv_id
         st.session_state.input_disabled = False
+        st.session_state.cancel_requested = False
         st.rerun()
     
     # 对话列表
@@ -344,6 +349,7 @@ with st.sidebar:
             ):
                 st.session_state.current_conversation_id = conv_id
                 st.session_state.input_disabled = False
+                st.session_state.cancel_requested = False
                 st.rerun()
         with col2:
             if st.button("x", key=f"del_{conv_id}", help="删除对话"):
@@ -422,6 +428,16 @@ elif not has_index:
         use_container_width=True,
     )
 else:
+    # 停止按钮（仅在处理中显示）
+    if st.session_state.input_disabled:
+        col_btn, col_txt = st.columns([1, 4])
+        with col_btn:
+            if st.button("停止生成", type="secondary"):
+                st.session_state.cancel_requested = True
+                st.rerun()
+        with col_txt:
+            st.caption("正在生成回复中...")
+
     # 使用 disabled 参数控制输入框
     user_input = st.chat_input(
         "输入问题..." if not st.session_state.input_disabled else "等待回复中...",
@@ -440,6 +456,13 @@ else:
 
 # 处理待处理的查询（回复生成）
 if st.session_state.input_disabled and "pending_query" in st.session_state:
+    # 检查是否取消了请求
+    if st.session_state.cancel_requested:
+        st.session_state.input_disabled = False
+        st.session_state.cancel_requested = False
+        st.session_state.pop("pending_query", None)
+        st.rerun()
+    
     query = st.session_state.pending_query
     current_conv_id = st.session_state.current_conversation_id
     conversation = st.session_state.conversations[current_conv_id]
@@ -459,9 +482,33 @@ if st.session_state.input_disabled and "pending_query" in st.session_state:
         for m in conversation["messages"][:-1]
     ]
 
+    # 使用placeholder显示动态状态
+    status_placeholder = st.empty()
+    
     with st.spinner("检索中..."):
         try:
+            # 模拟检查取消状态（在实际AI调用前）
+            if st.session_state.cancel_requested:
+                status_placeholder.warning("请求已取消")
+                # 移除刚添加的用户消息
+                conversation["messages"].pop()
+                st.session_state.input_disabled = False
+                st.session_state.cancel_requested = False
+                st.session_state.pop("pending_query", None)
+                st.rerun()
+            
             result = backend.chat(query, history_for_backend)
+            
+            # 检查AI调用后是否取消了
+            if st.session_state.cancel_requested:
+                status_placeholder.warning("请求已取消（回复已被忽略）")
+                conversation["messages"].pop()  # 移除用户消息
+                conversation["messages"].pop()  # 移除之前的助手回复（如果有）
+                st.session_state.input_disabled = False
+                st.session_state.cancel_requested = False
+                st.session_state.pop("pending_query", None)
+                st.rerun()
+            
             answer = result["answer"]
             citations = result["citations"]
         except Exception as e:
@@ -475,5 +522,6 @@ if st.session_state.input_disabled and "pending_query" in st.session_state:
 
     # 重新启用输入框
     st.session_state.input_disabled = False
+    st.session_state.cancel_requested = False
     st.session_state.pop("pending_query", None)
     st.rerun()
