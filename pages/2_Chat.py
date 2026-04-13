@@ -148,6 +148,10 @@ html, body, [class*="css"] {
 .sb-status { font-size: 0.83rem; line-height: 1.9; color: inherit; }
 .sb-dot-on  { color: #48bb78; }
 .sb-dot-off { color: #fc8181; }
+
+/* 对话列表项 */
+.conv-item { display: flex; align-items: center; gap: 4px; }
+.conv-item button { flex: 1; min-width: 0; }
 </style>
 """,
     unsafe_allow_html=True,
@@ -337,30 +341,25 @@ with st.sidebar:
         conv_id = conv["id"]
         is_current = conv_id == current_conv_id
         msg_count = len(conv["messages"])
-        preview = conv["messages"][0]["content"][:15] + "..." if msg_count > 0 else "新对话"
+        preview = conv["messages"][0]["content"][:10] + "..." if msg_count > 0 else "新对话"
+        indicator = "●" if is_current else ""
         
-        # 使用3:1比例，适配手机端
-        col1, col2 = st.columns([3, 1])
+        # 使用紧密排列的两列
+        col1, col2 = st.columns([0.85, 0.15])
         with col1:
-            if st.button(
-                f"{'● ' if is_current else ''}{preview}",
-                key=f"conv_{conv_id}",
-                use_container_width=True,
-            ):
+            if st.button(f"{indicator} {preview}", key=f"conv_{conv_id}"):
                 st.session_state.current_conversation_id = conv_id
                 st.session_state.input_disabled = False
                 st.session_state.cancel_requested = False
                 st.rerun()
         with col2:
-            if st.button("删除", key=f"del_{conv_id}", help="删除对话", use_container_width=True):
+            if st.button("X", key=f"del_{conv_id}", help="删除"):
                 del st.session_state.conversations[conv_id]
                 if st.session_state.current_conversation_id == conv_id:
                     remaining = list(st.session_state.conversations.keys())
                     if remaining:
-                        # 切换到第一个剩余对话
                         st.session_state.current_conversation_id = remaining[0]
                     else:
-                        # 没有剩余对话，创建一个新的
                         new_conv_id = _generate_conversation_id()
                         st.session_state.conversations[new_conv_id] = {
                             "id": new_conv_id,
