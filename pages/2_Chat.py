@@ -67,8 +67,8 @@ html, body, [class*="css"] {
     line-height: 1.7;
     white-space: pre-wrap;
     word-break: break-word;
-    background: var(--streamlit-background-color, #ffffff);
-    border: 1px solid var(--streamlit-border-color, #e2e8f0);
+    background: var(--streamlit-secondary-background-color, inherit);
+    border: 1px solid var(--streamlit-border-color, inherit);
     color: inherit;
 }
 
@@ -101,7 +101,7 @@ html, body, [class*="css"] {
     border-radius: 4px;
     font-size: 0.72rem;
     font-weight: 500;
-    background: var(--streamlit-secondary-background-color, #edf2f7);
+    background: rgba(128, 128, 128, 0.2);
     color: inherit;
 }
 
