@@ -1,7 +1,7 @@
 import streamlit as st
 from core.rag_backend import LangChainRAGBackend
 
-st.set_page_config(page_title="RAG Search | Home", page_icon="·", layout="wide")
+st.set_page_config(page_title="RAG Search | 首页", page_icon="·", layout="wide")
 
 st.markdown("""
 <style>
@@ -80,10 +80,10 @@ st.markdown("**快速导航**")
 ncol1, ncol2, ncol3 = st.columns(3)
 
 with ncol1:
-    st.page_link("pages/0_Settings.py", label="Settings", icon=":material/settings:", use_container_width=True)
+    st.page_link("pages/0_Settings.py", label="服务配置", icon=":material/settings:", use_container_width=True)
 
 with ncol2:
-    st.page_link("pages/1_Knowledge_Base.py", label="Knowledge Base", icon=":material/folder:", use_container_width=True)
+    st.page_link("pages/1_Knowledge_Base.py", label="知识库管理", icon=":material/folder:", use_container_width=True)
 
 with ncol3:
-    st.page_link("pages/2_Chat.py", label="Chat", icon=":material/chat:", use_container_width=True)
+    st.page_link("pages/2_Chat.py", label="智能问答", icon=":material/chat:", use_container_width=True)

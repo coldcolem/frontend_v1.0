@@ -214,12 +214,23 @@ class LangChainRAGBackend(IRAGBackend):
 
     def initialize(self, llm_config: LLMConfig, embed_config: EmbedConfig) -> bool:
         try:
+            # 先验证 LLM 连接
+            if not self.ping_llm(llm_config):
+                raise RuntimeError("LLM 连接验证失败")
             self.llm = self._build_llm(llm_config)
+
+            # 验证 Embedding 连接
+            if not self.ping_embedding(embed_config):
+                raise RuntimeError("Embedding 连接验证失败")
             self.embeddings = self._build_embeddings(embed_config)
+
             # FAISS 将在摄入文档时按需初始化
             return True
         except Exception as e:
             logger.error(f"后端初始化失败: {e}")
+            # 初始化失败时清除可能已部分设置的实例
+            self.llm = None
+            self.embeddings = None
             return False
 
     def clear_index(self):

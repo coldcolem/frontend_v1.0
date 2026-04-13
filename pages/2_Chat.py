@@ -6,7 +6,7 @@ import streamlit as st
 from typing import Optional
 from html import escape
 
-st.set_page_config(page_title="智能问答 | RAG Search", page_icon="·", layout="wide")
+st.set_page_config(page_title="Rag Search | 智能问答", page_icon="·", layout="wide")
 
 # ══════════════════════════════════════════════════════════════════════
 # 全局样式
@@ -422,20 +422,20 @@ else:
 if not is_ready:
     st.warning("服务尚未初始化")
     st.caption(
-        "请先前往 **Settings** 页面配置 LLM 与 Embedding 服务，并点击「初始化后端」。"
+        "请先前往 **服务配置** 页面配置 LLM 与 Embedding 服务，并点击「初始化后端」。"
     )
     st.page_link(
         "pages/0_Settings.py",
-        label="前往 Settings",
+        label="前往 服务配置",
         icon=":material/settings:",
         use_container_width=True,
     )
 elif not has_index:
     st.warning("知识库为空")
-    st.caption("请先前往 **Knowledge Base** 上传文档，构建向量索引后再进行问答。")
+    st.caption("请先前往 **知识库管理页面** 上传文档，构建向量索引后再进行问答。")
     st.page_link(
         "pages/1_Knowledge_Base.py",
-        label="前往 Knowledge Base",
+        label="前往 知识库管理页面",
         icon=":material/folder:",
         use_container_width=True,
     )

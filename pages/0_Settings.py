@@ -1,8 +1,41 @@
 import streamlit as st
+import threading
+from typing import Any, Optional
 from core.interfaces import LLMConfig, EmbedConfig
 from core.rag_backend import LangChainRAGBackend
 
-st.set_page_config(page_title="RAG Search | Settings", page_icon="·", layout="wide")
+# 超时时间（秒）
+PING_TIMEOUT = 10
+
+
+def _ping_with_timeout(backend, config, ping_type):
+    """带超时的 ping 函数，返回 None 表示超时"""
+    result: dict[str, Optional[bool | str]] = {"ok": None, "error": None}
+    finished = threading.Event()
+
+    def _target():
+        try:
+            if ping_type == "llm":
+                result["ok"] = backend.ping_llm(config)
+            else:
+                result["ok"] = backend.ping_embedding(config)
+        except Exception as e:
+            result["error"] = str(e)
+        finally:
+            finished.set()
+
+    t = threading.Thread(target=_target)
+    t.daemon = True
+    t.start()
+    if not finished.wait(timeout=PING_TIMEOUT):
+        # 超时，终止线程
+        return None
+    if result["error"]:
+        raise Exception(result["error"])
+    return result["ok"]
+
+
+st.set_page_config(page_title="RAG Search | 服务配置", page_icon="·", layout="wide")
 
 st.markdown("""
 <style>
@@ -112,16 +145,21 @@ with col1:
     st.session_state.cfg_llm_model    = llm_model
 
     if st.button("测试 LLM 连通性", use_container_width=True):
-        with st.spinner("连接中..."):
-            ok = st.session_state.backend.ping_llm(LLMConfig(
-                base_url=llm_base_url or None,
-                api_key=llm_api_key,
-                model_name=llm_model
-            ))
-        if ok:
-            st.success("LLM 连通正常")
-        else:
-            st.error("LLM 连接失败，请检查配置")
+        with st.spinner(f"连接中（超时{PING_TIMEOUT}秒）..."):
+            try:
+                ok = _ping_with_timeout(
+                    st.session_state.backend,
+                    LLMConfig(base_url=llm_base_url or None, api_key=llm_api_key, model_name=llm_model),
+                    "llm"
+                )
+                if ok is None:
+                    st.error(f"LLM 连接超时（{PING_TIMEOUT}秒），请检查网络或地址")
+                elif ok:
+                    st.success("LLM 连通正常")
+                else:
+                    st.error("LLM 连接失败，请检查配置")
+            except Exception as e:
+                st.error(f"LLM 连接失败：{e}")
 
 # ══════════════════════════════════════════════════════════════════
 # Embedding 配置列
@@ -177,16 +215,21 @@ with col2:
     st.session_state.cfg_emb_model    = emb_model
 
     if st.button("测试 Embedding 连通性", use_container_width=True):
-        with st.spinner("连接中..."):
-            ok = st.session_state.backend.ping_embedding(EmbedConfig(
-                base_url=emb_base_url or None,
-                api_key=emb_api_key,
-                model_name=emb_model
-            ))
-        if ok:
-            st.success("Embedding 连通正常")
-        else:
-            st.error("Embedding 连接失败，请检查配置")
+        with st.spinner(f"连接中（超时{PING_TIMEOUT}秒）..."):
+            try:
+                ok = _ping_with_timeout(
+                    st.session_state.backend,
+                    EmbedConfig(base_url=emb_base_url or None, api_key=emb_api_key, model_name=emb_model),
+                    "embedding"
+                )
+                if ok is None:
+                    st.error(f"Embedding 连接超时（{PING_TIMEOUT}秒），请检查网络或地址")
+                elif ok:
+                    st.success("Embedding 连通正常")
+                else:
+                    st.error("Embedding 连接失败，请检查配置")
+            except Exception as e:
+                st.error(f"Embedding 连接失败：{e}")
 
 st.divider()
 
@@ -194,26 +237,58 @@ st.divider()
 # 初始化 Backend
 # ══════════════════════════════════════════════════════════════════
 backend = st.session_state.backend
-is_initialized = backend.llm is not None and backend.embeddings is not None
 
+# 初始化按钮
 if st.button("初始化后端", type="primary", use_container_width=True):
-    with st.spinner("正在初始化..."):
-        ok = backend.initialize(
-            LLMConfig(
-                base_url=llm_base_url or None,
-                api_key=llm_api_key,
-                model_name=llm_model
-            ),
-            EmbedConfig(
-                base_url=emb_base_url or None,
-                api_key=emb_api_key,
-                model_name=emb_model
-            )
-        )
-    if ok:
-        st.success("初始化成功")
+    llm_config = LLMConfig(
+        base_url=llm_base_url or None,
+        api_key=llm_api_key,
+        model_name=llm_model
+    )
+    emb_config = EmbedConfig(
+        base_url=emb_base_url or None,
+        api_key=emb_api_key,
+        model_name=emb_model
+    )
+
+    # 分别测试连通性（带超时）
+    with st.spinner(f"正在验证 LLM 连接（超时{PING_TIMEOUT}秒）..."):
+        try:
+            llm_ok = _ping_with_timeout(backend, llm_config, "llm")
+        except Exception as e:
+            llm_ok = False
+
+    if llm_ok is None:
+        st.error(f"LLM 连接超时（{PING_TIMEOUT}秒），请检查网络或地址")
+    elif not llm_ok:
+        st.error("LLM 连接失败，请检查 API Key、Base URL 和模型名称")
     else:
-        st.error("初始化失败，请检查配置后重试。")
+        with st.spinner(f"正在验证 Embedding 连接（超时{PING_TIMEOUT}秒）..."):
+            try:
+                emb_ok = _ping_with_timeout(backend, emb_config, "embedding")
+            except Exception as e:
+                emb_ok = False
+
+        if emb_ok is None:
+            st.error(f"Embedding 连接超时（{PING_TIMEOUT}秒），请检查网络或地址")
+        elif not emb_ok:
+            st.error("Embedding 连接失败，请检查 API Key、Base URL 和模型名称")
+        else:
+            # 两个都通过才执行初始化
+            with st.spinner("正在初始化后端..."):
+                ok = backend.initialize(llm_config, emb_config)
+            if ok:
+                st.success("初始化成功")
+                st.rerun()
+            else:
+                st.error("初始化失败，请检查配置后重试。")
+
+# 显示当前状态
+is_initialized = backend.llm is not None and backend.embeddings is not None
+if is_initialized:
+    st.info("当前状态：已初始化")
+else:
+    st.warning("当前状态：未初始化")
 
 st.divider()
 
