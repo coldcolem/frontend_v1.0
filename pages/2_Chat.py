@@ -149,9 +149,15 @@ html, body, [class*="css"] {
 .sb-dot-on  { color: #48bb78; }
 .sb-dot-off { color: #fc8181; }
 
-/* 对话列表项 */
-.conv-item { display: flex; align-items: center; gap: 4px; }
-.conv-item button { flex: 1; min-width: 0; }
+/* 手机端适配 */
+@media (max-width: 768px) {
+    section[data-testid="stSidebar"] {
+        width: 100% !important;
+    }
+    [data-testid="stHorizontalBlock"] {
+        flex-wrap: nowrap !important;
+    }
+}
 </style>
 """,
     unsafe_allow_html=True,
@@ -341,19 +347,19 @@ with st.sidebar:
         conv_id = conv["id"]
         is_current = conv_id == current_conv_id
         msg_count = len(conv["messages"])
-        preview = conv["messages"][0]["content"][:10] + "..." if msg_count > 0 else "新对话"
+        preview = conv["messages"][0]["content"][:8] + "..." if msg_count > 0 else "新对话"
         indicator = "●" if is_current else ""
         
-        # 使用紧密排列的两列
-        col1, col2 = st.columns([0.85, 0.15])
-        with col1:
-            if st.button(f"{indicator} {preview}", key=f"conv_{conv_id}"):
+        # 使用紧凑布局
+        cols = st.columns([6, 1])
+        with cols[0]:
+            if st.button(f"{indicator} {preview}", key=f"conv_{conv_id}", use_container_width=True):
                 st.session_state.current_conversation_id = conv_id
                 st.session_state.input_disabled = False
                 st.session_state.cancel_requested = False
                 st.rerun()
-        with col2:
-            if st.button("X", key=f"del_{conv_id}", help="删除"):
+        with cols[1]:
+            if st.button("✕", key=f"del_{conv_id}", help="删除", use_container_width=True):
                 del st.session_state.conversations[conv_id]
                 if st.session_state.current_conversation_id == conv_id:
                     remaining = list(st.session_state.conversations.keys())
