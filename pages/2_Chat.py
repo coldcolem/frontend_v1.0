@@ -157,6 +157,12 @@ html, body, [class*="css"] {
     [data-testid="stHorizontalBlock"] {
         flex-wrap: nowrap !important;
     }
+    /* 缩小侧边栏按钮 */
+    section[data-testid="stSidebar"] button {
+        padding: 0.25rem 0.5rem !important;
+        min-height: 2rem !important;
+        font-size: 0.85rem !important;
+    }
 }
 </style>
 """,
@@ -347,19 +353,19 @@ with st.sidebar:
         conv_id = conv["id"]
         is_current = conv_id == current_conv_id
         msg_count = len(conv["messages"])
-        preview = conv["messages"][0]["content"][:8] + "..." if msg_count > 0 else "新对话"
+        preview = conv["messages"][0]["content"][:6] + ".." if msg_count > 0 else "新对话"
         indicator = "●" if is_current else ""
         
         # 使用紧凑布局
-        cols = st.columns([6, 1])
+        cols = st.columns([5, 1])
         with cols[0]:
-            if st.button(f"{indicator} {preview}", key=f"conv_{conv_id}", use_container_width=True):
+            if st.button(f"{indicator}{preview}", key=f"conv_{conv_id}", use_container_width=True):
                 st.session_state.current_conversation_id = conv_id
                 st.session_state.input_disabled = False
                 st.session_state.cancel_requested = False
                 st.rerun()
         with cols[1]:
-            if st.button("✕", key=f"del_{conv_id}", help="删除", use_container_width=True):
+            if st.button("×", key=f"del_{conv_id}", help="删除", use_container_width=True):
                 del st.session_state.conversations[conv_id]
                 if st.session_state.current_conversation_id == conv_id:
                     remaining = list(st.session_state.conversations.keys())
