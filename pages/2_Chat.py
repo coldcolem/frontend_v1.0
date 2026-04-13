@@ -245,10 +245,35 @@ def render_message(msg: dict):
 
 
 # ══════════════════════════════════════════════════════════════════════
-# 会话状态
+# 会话状态 - 多对话管理
 # ══════════════════════════════════════════════════════════════════════
-if "chat_messages" not in st.session_state:
-    st.session_state.chat_messages = []
+import time
+
+def _generate_conversation_id():
+    return str(int(time.time() * 1000))
+
+def _get_or_create_conversation():
+    """获取或创建当前对话"""
+    if "conversations" not in st.session_state:
+        st.session_state.conversations = {}
+    
+    if "current_conversation_id" not in st.session_state:
+        # 创建第一个对话
+        conv_id = _generate_conversation_id()
+        st.session_state.conversations[conv_id] = {
+            "id": conv_id,
+            "title": "新对话",
+            "messages": [],
+            "created_at": time.time()
+        }
+        st.session_state.current_conversation_id = conv_id
+    
+    return st.session_state.current_conversation_id
+
+# 初始化当前对话
+current_conv_id = _get_or_create_conversation()
+current_conversation = st.session_state.conversations.get(current_conv_id)
+chat_messages = current_conversation["messages"] if current_conversation else []
 
 # 控制输入框是否可用
 if "input_disabled" not in st.session_state:
@@ -282,13 +307,68 @@ with st.sidebar:
 
     st.divider()
 
-    if st.button("清空对话", use_container_width=True):
-        st.session_state.chat_messages = []
+    # 对话管理区域
+    st.markdown("**对话列表**")
+    
+    # 新建对话按钮
+    if st.button("+ 新建对话", use_container_width=True):
+        conv_id = _generate_conversation_id()
+        st.session_state.conversations[conv_id] = {
+            "id": conv_id,
+            "title": "新对话",
+            "messages": [],
+            "created_at": time.time()
+        }
+        st.session_state.current_conversation_id = conv_id
+        st.session_state.input_disabled = False
         st.rerun()
-
-    rounds = len(st.session_state.chat_messages) // 2
+    
+    # 对话列表
+    conversations_list = list(st.session_state.conversations.values())
+    conversations_list.sort(key=lambda x: x["created_at"], reverse=True)
+    
+    # 显示对话列表（排除当前选中的）
+    for conv in conversations_list:
+        conv_id = conv["id"]
+        is_current = conv_id == current_conv_id
+        msg_count = len(conv["messages"])
+        preview = conv["messages"][0]["content"][:20] + "..." if msg_count > 0 else "空对话"
+        
+        col1, col2 = st.columns([4, 1])
+        with col1:
+            btn_label = f"对话 {len(st.session_state.conversations) - list(reversed(conversations_list)).index(conv)}"
+            if st.button(
+                f"{'● ' if is_current else ''}{preview}",
+                key=f"conv_{conv_id}",
+                use_container_width=True,
+            ):
+                st.session_state.current_conversation_id = conv_id
+                st.session_state.input_disabled = False
+                st.rerun()
+        with col2:
+            if st.button("x", key=f"del_{conv_id}", help="删除对话"):
+                del st.session_state.conversations[conv_id]
+                if st.session_state.current_conversation_id == conv_id:
+                    remaining = list(st.session_state.conversations.keys())
+                    if remaining:
+                        # 切换到第一个剩余对话
+                        st.session_state.current_conversation_id = remaining[0]
+                    else:
+                        # 没有剩余对话，创建一个新的
+                        new_conv_id = _generate_conversation_id()
+                        st.session_state.conversations[new_conv_id] = {
+                            "id": new_conv_id,
+                            "title": "新对话",
+                            "messages": [],
+                            "created_at": time.time()
+                        }
+                        st.session_state.current_conversation_id = new_conv_id
+                st.rerun()
+    
+    # 当前对话信息
+    rounds = len(chat_messages) // 2
     if rounds:
-        st.caption(f"{rounds} 轮对话")
+        st.caption(f"当前对话：{rounds} 轮对话")
 
     st.divider()
 
@@ -306,7 +386,7 @@ st.markdown(
 )
 
 # 消息列表
-if not st.session_state.chat_messages:
+if not chat_messages:
     st.markdown(
         """
     <div class="empty-state">
@@ -317,7 +397,7 @@ if not st.session_state.chat_messages:
         unsafe_allow_html=True,
     )
 else:
-    for msg in st.session_state.chat_messages:
+    for msg in chat_messages:
         render_message(msg)
 
 # 提示信息
@@ -354,20 +434,29 @@ else:
         # 保存查询并禁用输入框
         st.session_state.pending_query = query
         st.session_state.input_disabled = True
+        # 切换到当前对话（防止切换对话后消息发到错误的对话）
+        st.session_state.current_conversation_id = current_conv_id
         st.rerun()
 
 # 处理待处理的查询（回复生成）
 if st.session_state.input_disabled and "pending_query" in st.session_state:
     query = st.session_state.pending_query
+    current_conv_id = st.session_state.current_conversation_id
+    conversation = st.session_state.conversations[current_conv_id]
 
-    # 添加用户消息
-    st.session_state.chat_messages.append(
+    # 添加用户消息到当前对话
+    conversation["messages"].append(
         {"role": "user", "content": query, "citations": []}
     )
 
+    # 更新对话标题（如果是对话的第一条消息）
+    if len(conversation["messages"]) == 1:
+        title = query[:30] + "..." if len(query) > 30 else query
+        conversation["title"] = title
+
     history_for_backend = [
         {"role": m["role"], "content": m["content"]}
-        for m in st.session_state.chat_messages[:-1]
+        for m in conversation["messages"][:-1]
     ]
 
     with st.spinner("检索中..."):
@@ -379,7 +468,8 @@ if st.session_state.input_disabled and "pending_query" in st.session_state:
             answer = f"发生错误：{e}"
             citations = []
 
-    st.session_state.chat_messages.append(
+    # 添加助手回复
+    conversation["messages"].append(
         {"role": "assistant", "content": answer, "citations": citations}
     )
 

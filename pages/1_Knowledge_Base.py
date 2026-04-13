@@ -83,11 +83,15 @@ tab_upload, tab_manage = st.tabs(["上传文档", "文件管理"])
 
 with tab_upload:
     st.markdown("**上传文档**")
+    # 使用动态 key 来重置上传组件
+    if "uploader_key" not in st.session_state:
+        st.session_state.uploader_key = 0
     uploaded_files = st.file_uploader(
         "支持 PDF、TXT、Markdown、DOCX 格式，可多选",
         type=["pdf", "txt", "md", "docx"],
         accept_multiple_files=True,
         label_visibility="collapsed",
+        key=f"file_uploader_{st.session_state.uploader_key}",
     )
 
     if uploaded_files:
@@ -128,6 +132,9 @@ with tab_upload:
                     f"本次处理：{chunks} chunks，"
                     f"总耗时 {total_s:.2f}s（加载 {load_s:.2f}s / 切分 {split_s:.2f}s / 向量索引 {index_s:.2f}s）"
                 )
+                # 重置上传组件，防止重复提交
+                st.session_state.uploader_key += 1
+                st.rerun()
         except RuntimeError as e:
             st.error(f"入库失败：{e}")
         except Exception as e:
