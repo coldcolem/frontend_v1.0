@@ -149,7 +149,7 @@ html, body, [class*="css"] {
 .sb-dot-on  { color: #48bb78; }
 .sb-dot-off { color: #fc8181; }
 
-/* 手机端适配 */
+/* 手机端适配 - 强制缩小按钮 */
 @media (max-width: 768px) {
     section[data-testid="stSidebar"] {
         width: 100% !important;
@@ -157,12 +157,15 @@ html, body, [class*="css"] {
     [data-testid="stHorizontalBlock"] {
         flex-wrap: nowrap !important;
     }
-    /* 缩小侧边栏按钮 */
-    section[data-testid="stSidebar"] button {
-        padding: 0.25rem 0.5rem !important;
-        min-height: 2rem !important;
-        font-size: 0.85rem !important;
-    }
+}
+
+/* 通用按钮缩小 */
+.stButton > button {
+    padding-top: 0.2rem !important;
+    padding-bottom: 0.2rem !important;
+    min-height: 1.8rem !important;
+    font-size: 0.8rem !important;
+    line-height: 1 !important;
 }
 </style>
 """,
