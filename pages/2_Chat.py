@@ -149,7 +149,7 @@ html, body, [class*="css"] {
 .sb-dot-on  { color: #48bb78; }
 .sb-dot-off { color: #fc8181; }
 
-/* 手机端适配 - 强制缩小按钮 */
+/* 手机端适配 */
 @media (max-width: 768px) {
     section[data-testid="stSidebar"] {
         width: 100% !important;
@@ -157,15 +157,6 @@ html, body, [class*="css"] {
     [data-testid="stHorizontalBlock"] {
         flex-wrap: nowrap !important;
     }
-}
-
-/* 通用按钮缩小 */
-.stButton > button {
-    padding-top: 0.2rem !important;
-    padding-bottom: 0.2rem !important;
-    min-height: 1.8rem !important;
-    font-size: 0.8rem !important;
-    line-height: 1 !important;
 }
 </style>
 """,
@@ -347,43 +338,50 @@ with st.sidebar:
         st.session_state.cancel_requested = False
         st.rerun()
     
-    # 对话列表
+    # 对话列表 - 使用selectbox模式适配手机端
     conversations_list = list(st.session_state.conversations.values())
     conversations_list.sort(key=lambda x: x["created_at"], reverse=True)
     
-    # 显示对话列表
+    # 构建选项列表
+    conv_options = []
     for conv in conversations_list:
         conv_id = conv["id"]
         is_current = conv_id == current_conv_id
         msg_count = len(conv["messages"])
-        preview = conv["messages"][0]["content"][:6] + ".." if msg_count > 0 else "新对话"
-        indicator = "●" if is_current else ""
-        
-        # 使用紧凑布局
-        cols = st.columns([5, 1])
-        with cols[0]:
-            if st.button(f"{indicator}{preview}", key=f"conv_{conv_id}", use_container_width=True):
-                st.session_state.current_conversation_id = conv_id
-                st.session_state.input_disabled = False
-                st.session_state.cancel_requested = False
-                st.rerun()
-        with cols[1]:
-            if st.button("×", key=f"del_{conv_id}", help="删除", use_container_width=True):
-                del st.session_state.conversations[conv_id]
-                if st.session_state.current_conversation_id == conv_id:
-                    remaining = list(st.session_state.conversations.keys())
-                    if remaining:
-                        st.session_state.current_conversation_id = remaining[0]
-                    else:
-                        new_conv_id = _generate_conversation_id()
-                        st.session_state.conversations[new_conv_id] = {
-                            "id": new_conv_id,
-                            "title": "新对话",
-                            "messages": [],
-                            "created_at": time.time()
-                        }
-                        st.session_state.current_conversation_id = new_conv_id
-                st.rerun()
+        preview = conv["messages"][0]["content"][:15] + "..." if msg_count > 0 else "新对话"
+        indicator = "● " if is_current else ""
+        conv_options.append((f"{indicator}{preview}", conv_id))
+    
+    # 当前选中的索引
+    current_idx = next((i for i, (_, cid) in enumerate(conv_options) if cid == current_conv_id), 0)
+    
+    # 选择对话
+    selected_label = st.selectbox(
+        "选择对话",
+        options=[opt[0] for opt in conv_options],
+        index=current_idx,
+        label_visibility="collapsed"
+    )
+    selected_conv_id = next((cid for label, cid in conv_options if label == selected_label), current_conv_id)
+    
+    # 如果选择了不同的对话
+    if selected_conv_id != current_conv_id:
+        st.session_state.current_conversation_id = selected_conv_id
+        st.session_state.input_disabled = False
+        st.session_state.cancel_requested = False
+        st.rerun()
+    
+    # 删除当前对话按钮
+    if st.button("删除当前对话", type="secondary", use_container_width=True):
+        if len(st.session_state.conversations) > 1:
+            del st.session_state.conversations[current_conv_id]
+            remaining = list(st.session_state.conversations.keys())
+            st.session_state.current_conversation_id = remaining[0]
+        else:
+            # 只有一个对话，清空它
+            st.session_state.conversations[current_conv_id]["messages"] = []
+            st.session_state.conversations[current_conv_id]["title"] = "新对话"
+        st.rerun()
     
     # 当前对话信息
     rounds = len(chat_messages) // 2
