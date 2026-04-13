@@ -2,17 +2,21 @@ from abc import ABC, abstractmethod
 from typing import List, Dict, Any, Optional
 from dataclasses import dataclass
 
+
 @dataclass
 class LLMConfig:
     """LLM 连接配置。仅支持 OpenAI 兼容协议（含国产代理服务）。"""
+
     base_url: Optional[str]  # OpenAI 兼容接口的 Base URL，留空则使用官方地址
     api_key: str
     model_name: str
     temperature: float = 0.7
 
+
 @dataclass
 class EmbedConfig:
     """Embedding 连接配置。仅支持 OpenAI 兼容协议（含国产代理服务）。"""
+
     base_url: Optional[str]  # OpenAI 兼容接口的 Base URL，留空则使用官方地址
     api_key: str
     model_name: str
@@ -21,12 +25,13 @@ class EmbedConfig:
 @dataclass
 class Citation:
     """单条引文来源的结构化描述。"""
-    content: str                        # 被引用的原文片段
-    source: str = "未知来源"             # 文件名 / URL 等来源标识
-    source_path: Optional[str] = None     # 完整来源路径（展示层可用于 tooltip）
-    page: Optional[int] = None          # 页码（PDF 适用）
-    score: Optional[float] = None       # 相似度距离（越小越相关）
-    chunk_index: int = 0                # 在检索结果中的排序位置
+
+    content: str  # 被引用的原文片段
+    source: str = "未知来源"  # 文件名 / URL 等来源标识
+    source_path: Optional[str] = None  # 完整来源路径（展示层可用于 tooltip）
+    page: Optional[int] = None  # 页码（PDF 适用）
+    score: Optional[float] = None  # 相似度距离（越小越相关）
+    chunk_index: int = 0  # 在检索结果中的排序位置
 
 
 class IRAGBackend(ABC):
@@ -50,7 +55,9 @@ class IRAGBackend(ABC):
         pass
 
     @abstractmethod
-    def ingest_documents(self, file_paths: List[str], source_names: Optional[Dict[str, str]] = None) -> bool:
+    def ingest_documents(
+        self, file_paths: List[str], source_names: Optional[Dict[str, str]] = None
+    ) -> bool:
         """解析切分并入库文档。source_names 用于将临时路径映射为用户可读文件名。"""
         pass
 
@@ -70,7 +77,9 @@ class IRAGBackend(ABC):
         pass
 
     @abstractmethod
-    def chat(self, query: str, chat_history: Optional[List[Dict[str, str]]] = None) -> Dict[str, Any]:
+    def chat(
+        self, query: str, chat_history: Optional[List[Dict[str, str]]] = None
+    ) -> Dict[str, Any]:
         """
         RAG 对话请求。
 
@@ -81,3 +90,7 @@ class IRAGBackend(ABC):
         """
         pass
 
+    @abstractmethod
+    def _generate_hypothetical_answer(self, query: str) -> str:
+        """HyDE: 生成假设性答案用于检索增强"""
+        pass
