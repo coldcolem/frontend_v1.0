@@ -3,4 +3,3 @@ headless = true
 
 [client]
 showErrorDetails = true
-toolbarMode = "minimal"
