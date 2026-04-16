@@ -158,6 +158,9 @@ html, body, [class*="css"] {
         flex-wrap: nowrap !important;
     }
 }
+
+/* 隐藏 Streamlit footer */
+footer { display: none !important; }
 </style>
 """,
     unsafe_allow_html=True,

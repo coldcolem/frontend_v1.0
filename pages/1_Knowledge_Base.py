@@ -34,6 +34,7 @@ html, body, [class*="css"] { font-family: 'Inter', sans-serif; }
 }
 .stat-label { font-size: 0.75rem; font-weight: 500; margin-bottom: 0.2rem; opacity: 0.7; }
 .stat-value { font-size: 1.4rem; font-weight: 600; }
+footer { display: none !important; }
 </style>
 """,
     unsafe_allow_html=True,

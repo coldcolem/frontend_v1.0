@@ -44,6 +44,7 @@ html, body, [class*="css"] { font-family: 'Inter', sans-serif; }
 .page-title { font-size: 1.4rem; font-weight: 600; margin-bottom: 0.2rem; color: inherit; }
 .page-subtitle { font-size: 0.88rem; margin-bottom: 1.2rem; color: inherit; opacity: 0.7; }
 .field-label { font-size: 0.8rem; font-weight: 500; margin-bottom: 0.2rem; color: inherit; }
+footer { display: none !important; }
 </style>
 """, unsafe_allow_html=True)
 
