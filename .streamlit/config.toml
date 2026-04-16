@@ -3,7 +3,11 @@ headless = true
 
 [client]
 showErrorDetails = true
+showSidebarNavigation = true
 
+[browser]
+gatherUsageStats = false
 
-
+[runner]
+magicEnabled = false
 
