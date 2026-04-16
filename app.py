@@ -19,6 +19,9 @@ html, body, [class*="css"] { font-family: 'Inter', sans-serif; }
 .status-text-warn { color: #eab308; font-weight: 500; }
 .status-text-error { color: #ef4444; font-weight: 500; }
 .status-hint { font-size: 0.85rem; margin-left: 0.5rem; opacity: 0.7; }
+/* 隐藏 Streamlit footer 和制作者链接 */
+footer { display: none !important; }
+.stDeployMetric { display: none !important; }
 </style>
 """, unsafe_allow_html=True)
 
@@ -76,7 +79,7 @@ with col3:
 st.divider()
 
 # 快捷导航
-st.markdown("**快速导航**")
+st.markdown("**快捷导航**")
 ncol1, ncol2, ncol3 = st.columns(3)
 
 with ncol1:
