@@ -19,10 +19,24 @@ html, body, [class*="css"] { font-family: 'Inter', sans-serif; }
 .status-text-warn { color: #eab308; font-weight: 500; }
 .status-text-error { color: #ef4444; font-weight: 500; }
 .status-hint { font-size: 0.85rem; margin-left: 0.5rem; opacity: 0.7; }
-/* 隐藏 Streamlit footer 和制作者链接 */
-footer { display: none !important; }
-.stDeployMetric { display: none !important; }
+/* 隐藏 Streamlit footer */
+footer, [data-testid="stFooter"], .stDeployMetric, [class*="DeployButton"], [class*="MainMenu"], [class*="DeploySection"] { display: none !important; }
+/* 隐藏 Deploy 按钮 */
+section[data-testid="stSidebar"] > div:first-child > div:last-child { display: none !important; }
+/* 隐藏 GitHub 头像 */
+img[src*="github"], a[href*="github.com"] { display: none !important; }
 </style>
+<script>
+// 延迟隐藏 Streamlit branding
+setTimeout(function() {
+    // 隐藏 footer
+    document.querySelectorAll('footer, [data-testid="stFooter"]').forEach(el => el.style.display = 'none');
+    // 隐藏 deploy 按钮
+    document.querySelectorAll('[class*="DeployButton"], [class*="DeploySection"]').forEach(el => el.style.display = 'none');
+    // 隐藏特定链接
+    document.querySelectorAll('a[href*="streamlit.io"], a[href*="github.com"]').forEach(el => el.parentElement ? el.parentElement.style.display = 'none' : el.style.display = 'none');
+}, 1000);
+</script>
 """, unsafe_allow_html=True)
 
 # ── 持久化 Backend 实例 ─────────────────────────────────────────────
