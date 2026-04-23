@@ -157,6 +157,50 @@ html, body, [class*="css"] {
     [data-testid="stHorizontalBlock"] {
         flex-wrap: nowrap !important;
     }
+    /* 修复手机端 spinner 和 loading 提示超出范围 */
+    [data-testid="stSpinner"] {
+        max-width: 100% !important;
+        overflow-x: hidden !important;
+    }
+    [data-testid="stSpinner"] > div {
+        max-width: 100% !important;
+        overflow-x: hidden !important;
+        word-break: break-word !important;
+    }
+    [data-testid="stAlert"] {
+        max-width: 100% !important;
+        overflow-x: hidden !important;
+    }
+    [data-testid="stAlert"] > div {
+        max-width: 100% !important;
+        overflow-x: hidden !important;
+    }
+    /* 停止按钮区域和状态提示适配 */
+    [data-testid="stHorizontalBlock"]:has(button) {
+        flex-wrap: wrap !important;
+        gap: 0.5rem !important;
+    }
+    /* 修复停止按钮区域超出范围 */
+    .stHorizontal > div {
+        min-width: 0 !important;
+        max-width: 100% !important;
+    }
+    /* 修复 caption 和文字提示超出范围 */
+    [data-testid="stCaption"],
+    [data-testid="stMarkdown"],
+    [data-testid="stText"],
+    [data-testid="stAlert"] p,
+    [data-testid="stSpinner"] p {
+        max-width: 100% !important;
+        overflow-x: hidden !important;
+        word-wrap: break-word !important;
+    }
+    /* 全局防止横向溢出 */
+    .main .block-container {
+        padding-left: 1rem !important;
+        padding-right: 1rem !important;
+        overflow-x: hidden !important;
+    }
 }
 
 /* 隐藏 Streamlit footer */
